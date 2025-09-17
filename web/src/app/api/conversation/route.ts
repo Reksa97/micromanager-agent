@@ -2,13 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import { insertMessages } from "@/lib/conversations";
+import { insertMessages, type MessageSource } from "@/lib/conversations";
+import { notifyTelegramUser } from "@/lib/telegram/bot";
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant", "system", "tool"]),
   content: z.string().min(1),
   type: z.enum(["text", "tool", "state", "audio"]).default("text"),
+  source: z.enum(["telegram-user", "web-user", "micromanager", "realtime-agent"]).optional(),
   createdAt: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const bodySchema = z.object({
@@ -32,16 +35,33 @@ export async function POST(request: Request) {
   }
 
   const now = new Date();
-  await insertMessages(
-    parseResult.data.messages.map((message) => ({
-      userId: session.user.id,
-      role: message.role,
-      content: message.content,
-      type: message.type,
-      createdAt: message.createdAt ? new Date(message.createdAt) : now,
-      updatedAt: now,
-    })),
-  );
+  const userId = session.user.id;
+
+  const messages = parseResult.data.messages.map((message) => ({
+    userId,
+    role: message.role,
+    content: message.content,
+    type: message.type,
+    source: (message.source || "realtime-agent") as MessageSource,
+    createdAt: message.createdAt ? new Date(message.createdAt) : now,
+    updatedAt: now,
+    metadata: message.metadata,
+  }));
+
+  await insertMessages(messages);
+
+  // Try to notify Telegram user about realtime agent messages
+  for (const message of parseResult.data.messages) {
+    if (message.role === "user") {
+      notifyTelegramUser(userId, `🎤 Voice message from web:\n\n${message.content}`).catch((error) => {
+        console.error("Failed to send Telegram notification:", error);
+      });
+    } else if (message.role === "assistant") {
+      notifyTelegramUser(userId, `🤖 Assistant response:\n\n${message.content}`).catch((error) => {
+        console.error("Failed to send Telegram notification:", error);
+      });
+    }
+  }
 
   return NextResponse.json({ success: true });
 }

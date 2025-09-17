@@ -16,7 +16,11 @@ import { SessionControls } from "@/features/chat/components/session-controls";
 import { VoiceVisualizer } from "@/features/chat/components/voice-visualizer";
 import type { ChatMessage } from "@/features/chat/types";
 
-export function ChatPanel() {
+interface ChatPanelProps {
+  telegramMode?: boolean;
+}
+
+export function ChatPanel({}: ChatPanelProps) {
   const [input, setInput] = useState("");
 
   const {

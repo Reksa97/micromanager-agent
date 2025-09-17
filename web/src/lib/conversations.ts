@@ -4,6 +4,8 @@ import { getMongoClient } from "@/lib/db";
 
 export type MessageRole = "user" | "assistant" | "system" | "tool";
 
+export type MessageSource = "telegram-user" | "web-user" | "micromanager" | "realtime-agent";
+
 export interface StoredMessage {
   _id?: ObjectId;
   id?: string;
@@ -13,7 +15,9 @@ export interface StoredMessage {
   createdAt: Date;
   updatedAt: Date;
   type: "text" | "tool" | "state" | "audio";
+  source?: MessageSource;
   metadata?: Record<string, unknown>;
+  telegramChatId?: number | string;
 }
 
 const COLLECTION = "conversation_messages";

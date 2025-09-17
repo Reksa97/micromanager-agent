@@ -2,24 +2,21 @@
 
 ## Prerequisites
 
-Install Docker
-
-Install MongoDB shell
-
-Download the correct version for your device and follow instructions from: https://www.mongodb.com/docs/mongodb-shell/install/
-
-Run dev server and output to file
-
-```
-npm run dev >> ./dev.log 2>&1
-```
+- Install Node.js v22
+-
 
 ## Integrations
 
-### Google Calendar
+### Database (MongoDB)
 
-### Telegram
+MongoDB cluster (free tier) running at https://cloud.mongodb.com/
 
 ### OpenAI
 
-### Database (MongoDB)
+### Google Calendar
+
+TODO
+
+### Telegram
+
+TODO

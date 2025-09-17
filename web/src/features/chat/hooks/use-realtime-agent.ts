@@ -13,6 +13,7 @@ import {
 } from "@openai/agents-realtime";
 
 import type { ChatMessage, VoiceSessionSignals } from "@/features/chat/types";
+import { createRealtimeContextTools } from "@/lib/agent/context-tools";
 
 interface UseRealtimeAgentOptions {
   onMessages?: (messages: ChatMessage[]) => void;
@@ -23,6 +24,9 @@ const INITIAL_SIGNALS: VoiceSessionSignals = {
   state: "idle",
   lastUpdate: Date.now(),
 };
+
+const BASE_REALTIME_INSTRUCTIONS =
+  "You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items.";
 
 type TransportConnectionState = "connecting" | "connected" | "disconnected" | "disconnecting";
 type TranscriptCompletedEvent = TransportEvent & {
@@ -40,7 +44,7 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
   const sessionRef = useRef<RealtimeSession | null>(null);
   const agentRef = useRef<RealtimeAgent | null>(null);
   const assistantStreamRef = useRef<ChatMessage | null>(null);
-  const pendingForPersistence = useRef<ChatMessage[]>([]);
+  const pendingForPersistence = useRef<Array<ChatMessage & { metadata?: Record<string, unknown> }>>([]);
   const listenerCleanupRef = useRef<(() => void)[]>([]);
 
   const [signals, setSignals] = useState<VoiceSessionSignals>(INITIAL_SIGNALS);
@@ -84,14 +88,15 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          messages: payload.map(({ role, content, kind, createdAt }) => ({
-            role,
-            content,
-            type: kind,
-            createdAt,
-          })),
-        }),
+      body: JSON.stringify({
+        messages: payload.map(({ role, content, kind, createdAt, metadata }) => ({
+          role,
+          content,
+          type: kind,
+          createdAt,
+          metadata,
+        })),
+      }),
       });
     } catch (error) {
       console.error("Failed to persist realtime messages", error);
@@ -200,6 +205,61 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
     }));
 
     try {
+      let contextSnapshot = "The user context is currently empty.";
+
+      try {
+        const contextResponse = await fetch("/api/context", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "get", format: "text" }),
+        });
+
+        if (contextResponse.ok) {
+          const contextJson = await contextResponse.json();
+          const candidate = typeof contextJson?.output === "string" ? contextJson.output.trim() : "";
+          contextSnapshot = candidate.length > 0 ? candidate : "The user context is currently empty.";
+        } else {
+          contextSnapshot = "User context could not be retrieved at this time.";
+        }
+      } catch (contextError) {
+        console.error("Failed to fetch user context for realtime session", contextError);
+        contextSnapshot = "User context could not be retrieved at this time.";
+      }
+
+      const contextTools = createRealtimeContextTools({
+        onResult: ({ toolName, output, metadata, args }) => {
+          pendingForPersistence.current.push({
+            id: nanoid(),
+            role: "tool",
+            content: output,
+            kind: "tool",
+            createdAt: new Date().toISOString(),
+            metadata: {
+              toolName,
+              arguments: args,
+              ...(metadata ?? {}),
+            },
+          });
+          setSignals((prev) => ({
+            ...prev,
+            actionSummary: `Tool ${toolName} completed`,
+            lastUpdate: Date.now(),
+          }));
+          void flushPending();
+        },
+        onError: (toolError) => {
+          console.error("Realtime context tool error", toolError);
+          setSignals((prev) => ({
+            ...prev,
+            error: toolError.message,
+            lastUpdate: Date.now(),
+          }));
+          onError?.(toolError);
+        },
+      });
+
       const response = await fetch("/api/realtime/session", { method: "POST" });
       if (!response.ok) {
         throw new Error("Failed to initialize realtime session");
@@ -213,8 +273,8 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
 
       const agent = new RealtimeAgent({
         name: "Micromanager",
-        instructions:
-          "You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items.",
+        instructions: `${BASE_REALTIME_INSTRUCTIONS}\n\nCurrent user context snapshot:\n${contextSnapshot}`,
+        tools: contextTools.tools,
       });
 
       agentRef.current = agent;

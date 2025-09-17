@@ -1,6 +1,9 @@
+"server-only";
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { env } from "@/env";
 import { getMongoClient } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 
@@ -11,13 +14,23 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  if (!env.ALLOW_USER_REGISTRATION) {
+    return NextResponse.json(
+      { error: "User registration is disabled in this environment" },
+      { status: 403 }
+    );
+  }
+
   const json = await request.json().catch(() => null);
   const parseResult = bodySchema.safeParse(json);
 
   if (!parseResult.success) {
     return NextResponse.json(
-      { error: "Invalid payload", details: parseResult.error.flatten().fieldErrors },
-      { status: 422 },
+      {
+        error: "Invalid payload",
+        details: parseResult.error.flatten().fieldErrors,
+      },
+      { status: 422 }
     );
   }
 
@@ -31,7 +44,10 @@ export async function POST(request: Request) {
 
   const existingUser = await users.findOne({ email: normalizedEmail });
   if (existingUser) {
-    return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+    return NextResponse.json(
+      { error: "Email already in use" },
+      { status: 409 }
+    );
   }
 
   const hashedPassword = await hashPassword(password);
@@ -49,7 +65,10 @@ export async function POST(request: Request) {
     updatedAt: now,
   });
 
-  await users.updateOne({ _id: insertedId }, { $set: { id: insertedId.toString() } });
+  await users.updateOne(
+    { _id: insertedId },
+    { $set: { id: insertedId.toString() } }
+  );
 
   return NextResponse.json({ id: insertedId.toString() }, { status: 201 });
 }
