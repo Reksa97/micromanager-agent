@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { useChat } from "@/features/chat/hooks/use-chat";
 import { useRealtimeAgent } from "@/features/chat/hooks/use-realtime-agent";
 import { MessageBubble } from "@/features/chat/components/message-bubble";
@@ -33,6 +34,13 @@ export function ChatPanel() {
   });
 
   const sortedMessages = useMemo(() => messages, [messages]);
+
+  const transcriptText = realtime.voiceSignals.transcript?.trim();
+  const assistantStreamingText = realtime.voiceSignals.agentSpeech?.trim();
+  const assistantResponseText = realtime.voiceSignals.assistantResponse?.trim();
+  const assistantOutput = assistantStreamingText || assistantResponseText;
+  const reasoningText = realtime.voiceSignals.actionSummary?.trim();
+  const assistantBadge = assistantStreamingText ? "Streaming" : assistantResponseText ? "Completed" : undefined;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -119,21 +127,63 @@ export function ChatPanel() {
           }}
         />
         <VoiceVisualizer signals={realtime.voiceSignals} />
-        <Card className="border border-border/60 bg-card/80 shadow-inner">
+        <Card className="border border-border/60 bg-card/90 shadow-inner">
           <CardHeader>
-            <CardTitle className="text-base">Context Snapshot</CardTitle>
+            <CardTitle className="text-base">Realtime Highlights</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              Micromanager tracks the meeting transcript and summarises action items while you talk. Connect the
-              realtime agent to capture discussion and push finalized notes into MongoDB automatically.
-            </p>
-            <p>
-              Text chat now polls for updates while the backend streams GPT output into MongoDB, keeping the canonical
-              history server-side without locking the UI.
-            </p>
+          <CardContent className="space-y-4">
+            <RealtimeBucket
+              title="Latest User Input"
+              value={transcriptText}
+              placeholder="Waiting for the microphone…"
+            />
+            <RealtimeBucket
+              title="Assistant Output"
+              value={assistantOutput}
+              placeholder="The voice agent will respond here."
+              badge={assistantBadge}
+            />
+            <RealtimeBucket
+              title="Reasoning & Tool Use"
+              value={reasoningText}
+              placeholder="No tools invoked yet."
+            />
           </CardContent>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+interface RealtimeBucketProps {
+  title: string;
+  value?: string | null;
+  placeholder: string;
+  badge?: string;
+}
+
+function RealtimeBucket({ title, value, placeholder, badge }: RealtimeBucketProps) {
+  const trimmed = value?.trim();
+  const display = trimmed && trimmed.length > 0 ? trimmed : undefined;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <span>{title}</span>
+        {badge ? (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <div className="min-h-[120px] rounded-2xl border border-border/50 bg-muted/20 px-3 py-3 shadow-inner">
+        <p
+          className={cn(
+            "whitespace-pre-wrap break-words text-sm leading-relaxed transition-colors",
+            display ? "text-foreground" : "text-muted-foreground/60",
+          )}
+        >
+          {display ?? placeholder}
+        </p>
       </div>
     </div>
   );

@@ -65,7 +65,12 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
     clearRegisteredListeners();
     assistantStreamRef.current = null;
     pendingForPersistence.current = [];
-    setSignals({ state: "idle", lastUpdate: Date.now() });
+    setSignals((prev) => ({
+      ...prev,
+      state: "idle",
+      lastUpdate: Date.now(),
+      agentSpeech: undefined,
+    }));
   }, [clearRegisteredListeners]);
 
   const flushPending = useCallback(async () => {
@@ -118,6 +123,7 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
       state: "speaking",
       lastUpdate: Date.now(),
       agentSpeech: updated.content,
+      assistantResponse: undefined,
     }));
   }, []);
 
@@ -152,6 +158,7 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
         state: "listening",
         lastUpdate: Date.now(),
         agentSpeech: undefined,
+        assistantResponse: trimmed,
       }));
     },
     [onMessages],
@@ -184,7 +191,13 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
   const startSession = useCallback(async () => {
     if (sessionRef.current) return sessionRef.current;
 
-    setSignals({ state: "connecting", lastUpdate: Date.now(), agentSpeech: undefined });
+    setSignals((prev) => ({
+      ...prev,
+      state: "connecting",
+      lastUpdate: Date.now(),
+      agentSpeech: undefined,
+      error: undefined,
+    }));
 
     try {
       const response = await fetch("/api/realtime/session", { method: "POST" });
@@ -232,6 +245,7 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
               : "ended",
           lastUpdate: Date.now(),
           agentSpeech: status === "disconnected" || status === "disconnecting" ? undefined : prev.agentSpeech,
+          error: status === "connected" ? undefined : prev.error,
         }));
 
         if (status === "disconnected" || status === "disconnecting") {
@@ -247,6 +261,7 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
           ...prev,
           state: "processing",
           lastUpdate: Date.now(),
+          assistantResponse: prev.assistantResponse,
         }));
       });
 
@@ -282,11 +297,33 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
         }));
       });
 
+      registerTransport("function_call", (event) => {
+        let prettyArgs = event.arguments;
+        try {
+          const parsed = JSON.parse(event.arguments ?? "{}");
+          prettyArgs = JSON.stringify(parsed, null, 2);
+        } catch {
+          // fall back to raw string
+        }
+        const trimmed = (prettyArgs ?? "").trim();
+        const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240)}…` : trimmed;
+        setSignals((prev) => ({
+          ...prev,
+          actionSummary: `Tool ${event.name} invoked${preview ? `\n${preview}` : ""}`,
+          lastUpdate: Date.now(),
+        }));
+      });
+
       registerTransport("error", (transportError) => {
         const raw = transportError.error;
         const err = raw instanceof Error ? raw : new Error(String(raw ?? "Realtime transport error"));
         console.error("Realtime transport error", err);
-        setSignals({ state: "error", lastUpdate: Date.now(), error: err.message });
+        setSignals((prev) => ({
+          ...prev,
+          state: "error",
+          lastUpdate: Date.now(),
+          error: err.message,
+        }));
         onError?.(err);
       });
 
@@ -303,7 +340,12 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
         const base = payload.error;
         const err = base instanceof Error ? base : new Error(String(base ?? "Unknown realtime error"));
         console.error("Realtime session error", err);
-        setSignals({ state: "error", lastUpdate: Date.now(), error: err.message });
+        setSignals((prev) => ({
+          ...prev,
+          state: "error",
+          lastUpdate: Date.now(),
+          error: err.message,
+        }));
         onError?.(err);
       };
 
@@ -338,7 +380,12 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
       console.error(error);
       const err = error as Error;
       onError?.(err);
-      setSignals({ state: "error", lastUpdate: Date.now(), error: err.message });
+      setSignals((prev) => ({
+        ...prev,
+        state: "error",
+        lastUpdate: Date.now(),
+        error: err.message,
+      }));
       sessionRef.current = null;
       agentRef.current = null;
       clearRegisteredListeners();

@@ -27,6 +27,7 @@ export interface VoiceSessionSignals {
   lastUpdate: number;
   transcript?: string;
   agentSpeech?: string;
+  assistantResponse?: string;
   actionSummary?: string;
   error?: string;
 }
