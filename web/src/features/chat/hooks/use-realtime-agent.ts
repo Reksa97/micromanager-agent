@@ -2,13 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { nanoid } from "nanoid";
-import { RealtimeAgent, RealtimeSession } from "@openai/agents-realtime";
+import {
+  RealtimeAgent,
+  RealtimeSession,
+  utils,
+  type RealtimeTransportEventTypes,
+  type TransportEvent,
+  type TransportLayerResponseCompleted,
+  type TransportLayerTranscriptDelta,
+} from "@openai/agents-realtime";
 
 import type { ChatMessage, VoiceSessionSignals } from "@/features/chat/types";
 
 interface UseRealtimeAgentOptions {
   onMessages?: (messages: ChatMessage[]) => void;
-  onStreamUpdate?: (message: ChatMessage) => void;
   onError?: (error: Error) => void;
 }
 
@@ -17,27 +24,49 @@ const INITIAL_SIGNALS: VoiceSessionSignals = {
   lastUpdate: Date.now(),
 };
 
-type RealtimeEventPayload = {
-  delta?: string;
-  text?: string;
+type TransportConnectionState = "connecting" | "connected" | "disconnected" | "disconnecting";
+type TranscriptCompletedEvent = TransportEvent & {
+  type: "conversation.item.input_audio_transcription.completed";
   transcript?: string;
-  output_text?: string;
-  error?: unknown;
+  item_id: string;
 };
 
-export function useRealtimeAgent({ onMessages, onStreamUpdate, onError }: UseRealtimeAgentOptions = {}) {
+type RealtimeSessionErrorPayload = {
+  type: "error";
+  error: unknown;
+};
+
+export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOptions = {}) {
   const sessionRef = useRef<RealtimeSession | null>(null);
   const agentRef = useRef<RealtimeAgent | null>(null);
   const assistantStreamRef = useRef<ChatMessage | null>(null);
   const pendingForPersistence = useRef<ChatMessage[]>([]);
+  const listenerCleanupRef = useRef<(() => void)[]>([]);
 
   const [signals, setSignals] = useState<VoiceSessionSignals>(INITIAL_SIGNALS);
 
+  const registerCleanup = useCallback((cleanup: () => void) => {
+    listenerCleanupRef.current.push(cleanup);
+  }, []);
+
+  const clearRegisteredListeners = useCallback(() => {
+    const callbacks = listenerCleanupRef.current;
+    listenerCleanupRef.current = [];
+    callbacks.forEach((cleanup) => {
+      try {
+        cleanup();
+      } catch (error) {
+        console.error("Failed to cleanup realtime listener", error);
+      }
+    });
+  }, []);
+
   const reset = useCallback(() => {
+    clearRegisteredListeners();
     assistantStreamRef.current = null;
     pendingForPersistence.current = [];
-    setSignals((prev) => ({ ...prev, state: "idle", agentSpeech: undefined, transcript: undefined }));
-  }, []);
+    setSignals({ state: "idle", lastUpdate: Date.now() });
+  }, [clearRegisteredListeners]);
 
   const flushPending = useCallback(async () => {
     const payload = pendingForPersistence.current;
@@ -50,58 +79,71 @@ export function useRealtimeAgent({ onMessages, onStreamUpdate, onError }: UseRea
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ messages: payload.map(({ role, content, kind, createdAt }) => ({
-          role,
-          content,
-          type: kind,
-          createdAt,
-        })) }),
+        body: JSON.stringify({
+          messages: payload.map(({ role, content, kind, createdAt }) => ({
+            role,
+            content,
+            type: kind,
+            createdAt,
+          })),
+        }),
       });
     } catch (error) {
       console.error("Failed to persist realtime messages", error);
     }
   }, []);
 
-  const handleAssistantDelta = useCallback(
-    (delta: string) => {
-      if (!assistantStreamRef.current) {
-        assistantStreamRef.current = {
+  const handleAssistantDelta = useCallback((delta: string) => {
+    const timestamp = new Date().toISOString();
+    const existing = assistantStreamRef.current;
+    const updated: ChatMessage = existing
+      ? {
+          ...existing,
+          content: `${existing.content}${delta}`,
+          streaming: true,
+        }
+      : {
           id: nanoid(),
           role: "assistant",
           content: delta,
           kind: "audio",
           streaming: true,
-          createdAt: new Date().toISOString(),
+          createdAt: timestamp,
         };
-        onStreamUpdate?.(assistantStreamRef.current);
-      } else {
-        assistantStreamRef.current = {
-          ...assistantStreamRef.current,
-          content: `${assistantStreamRef.current.content}${delta}`,
-        };
-        onStreamUpdate?.(assistantStreamRef.current);
-      }
 
-      setSignals((prev) => ({
-        ...prev,
-        state: "speaking",
-        lastUpdate: Date.now(),
-        agentSpeech: assistantStreamRef.current.content,
-      }));
-    },
-    [onStreamUpdate],
-  );
+    assistantStreamRef.current = updated;
+
+    setSignals((prev) => ({
+      ...prev,
+      state: "speaking",
+      lastUpdate: Date.now(),
+      agentSpeech: updated.content,
+    }));
+  }, []);
 
   const finalizeAssistantMessage = useCallback(
     (text: string) => {
-      if (!text.trim()) return;
+      const trimmed = text.trim();
+      if (!trimmed) {
+        assistantStreamRef.current = null;
+        setSignals((prev) => ({
+          ...prev,
+          state: "listening",
+          lastUpdate: Date.now(),
+          agentSpeech: undefined,
+        }));
+        return;
+      }
+
+      const ref = assistantStreamRef.current;
       const finalized: ChatMessage = {
-        id: assistantStreamRef.current?.id ?? nanoid(),
+        id: ref?.id ?? nanoid(),
         role: "assistant",
-        content: text.trim(),
+        content: trimmed,
         kind: "audio",
-        createdAt: new Date().toISOString(),
+        createdAt: ref?.createdAt ?? new Date().toISOString(),
       };
+
       assistantStreamRef.current = null;
       onMessages?.([finalized]);
       pendingForPersistence.current.push({ ...finalized, kind: "text" });
@@ -115,16 +157,41 @@ export function useRealtimeAgent({ onMessages, onStreamUpdate, onError }: UseRea
     [onMessages],
   );
 
+  const handleUserTranscript = useCallback(
+    (transcript: string) => {
+      const trimmed = transcript.trim();
+      if (!trimmed) return;
+
+      const message: ChatMessage = {
+        id: nanoid(),
+        role: "user",
+        content: trimmed,
+        kind: "audio",
+        createdAt: new Date().toISOString(),
+      };
+
+      onMessages?.([message]);
+      pendingForPersistence.current.push({ ...message, kind: "text" });
+      setSignals((prev) => ({
+        ...prev,
+        transcript: trimmed,
+        lastUpdate: Date.now(),
+      }));
+    },
+    [onMessages],
+  );
+
   const startSession = useCallback(async () => {
     if (sessionRef.current) return sessionRef.current;
 
-    setSignals({ state: "connecting", lastUpdate: Date.now() });
+    setSignals({ state: "connecting", lastUpdate: Date.now(), agentSpeech: undefined });
 
     try {
       const response = await fetch("/api/realtime/session", { method: "POST" });
       if (!response.ok) {
         throw new Error("Failed to initialize realtime session");
       }
+
       const data = await response.json();
       const secret = data?.client_secret?.value ?? data?.value;
       if (!secret) {
@@ -136,88 +203,133 @@ export function useRealtimeAgent({ onMessages, onStreamUpdate, onError }: UseRea
         instructions:
           "You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items.",
       });
+
       agentRef.current = agent;
 
       const session = new RealtimeSession(agent, { transport: "webrtc" });
       sessionRef.current = session;
 
-      session.on("connected", () => {
-        setSignals({ state: "listening", lastUpdate: Date.now() });
-      });
+      clearRegisteredListeners();
 
-      session.on("error", (payload: unknown) => {
-        const base = (payload as RealtimeEventPayload)?.error ?? payload;
-        const err = base instanceof Error ? base : new Error(String(base ?? "Unknown realtime error"));
-        console.error("Realtime session error", err);
-        setSignals({ state: "error", lastUpdate: Date.now(), error: err.message });
-        onError?.(err);
-      });
+      const transport = session.transport;
 
-      session.on("disconnected", async () => {
-        setSignals((prev) => ({ ...prev, state: "ended", lastUpdate: Date.now() }));
-        await flushPending();
-        reset();
-        sessionRef.current = null;
-        agentRef.current = null;
-      });
+      const registerTransport = <K extends keyof RealtimeTransportEventTypes>(
+        event: K,
+        handler: (...args: RealtimeTransportEventTypes[K]) => void,
+      ) => {
+        transport.on(event, handler);
+        registerCleanup(() => transport.off(event, handler));
+      };
 
-      session.on("input_audio_buffer.speech_started", () => {
-        setSignals((prev) => ({ ...prev, state: "listening", lastUpdate: Date.now() }));
-      });
-
-      session.on("input_audio_buffer.speech_stopped", () => {
-        setSignals((prev) => ({ ...prev, state: "processing", lastUpdate: Date.now() }));
-      });
-
-      session.on("conversation.item.audio_transcription.completed", (event: RealtimeEventPayload) => {
-        const transcript = event.transcript ?? event.text;
-        if (!transcript) return;
-        const message: ChatMessage = {
-          id: nanoid(),
-          role: "user",
-          content: transcript,
-          kind: "audio",
-          createdAt: new Date().toISOString(),
-        };
-        onMessages?.([message]);
-        pendingForPersistence.current.push({ ...message, kind: "text" });
+      registerTransport("connection_change", (status: TransportConnectionState) => {
         setSignals((prev) => ({
           ...prev,
-          transcript,
+          state:
+            status === "connected"
+              ? "listening"
+              : status === "connecting"
+              ? "connecting"
+              : "ended",
+          lastUpdate: Date.now(),
+          agentSpeech: status === "disconnected" || status === "disconnecting" ? undefined : prev.agentSpeech,
+        }));
+
+        if (status === "disconnected" || status === "disconnecting") {
+          void flushPending();
+          sessionRef.current = null;
+          agentRef.current = null;
+          reset();
+        }
+      });
+
+      registerTransport("turn_started", () => {
+        setSignals((prev) => ({
+          ...prev,
+          state: "processing",
           lastUpdate: Date.now(),
         }));
       });
 
-      const handleDelta = (event: RealtimeEventPayload) => {
-        const delta = event.delta ?? event.text;
-        if (!delta) return;
-        handleAssistantDelta(delta);
-      };
-
-      const handleDone = async (event: RealtimeEventPayload) => {
-        const text =
-          event.transcript ??
-          event.text ??
-          event.output_text ??
-          assistantStreamRef.current?.content ??
-          "";
-        finalizeAssistantMessage(text);
-        await flushPending();
-      };
-
-      session.on("response.audio_transcript.delta", handleDelta);
-      session.on("response.text.delta", handleDelta);
-
-      session.on("response.audio_transcript.done", handleDone);
-      session.on("response.text.done", handleDone);
-
-      session.on("response.created", () => {
-        setSignals((prev) => ({ ...prev, state: "processing", lastUpdate: Date.now() }));
+      registerTransport("audio_transcript_delta", (event: TransportLayerTranscriptDelta) => {
+        handleAssistantDelta(event.delta);
       });
 
-      session.on("response.done", async () => {
-        await flushPending();
+      registerTransport("turn_done", (event: TransportLayerResponseCompleted) => {
+        const outputItems = event.response.output ?? [];
+        const lastItem = outputItems[outputItems.length - 1];
+        const fromItem = lastItem ? utils.getLastTextFromAudioOutputMessage(lastItem) : null;
+        const fallback = assistantStreamRef.current?.content ?? "";
+        finalizeAssistantMessage(fromItem ?? fallback);
+        void flushPending();
       });
+
+      registerTransport("audio_done", () => {
+        setSignals((prev) => ({
+          ...prev,
+          state: "listening",
+          lastUpdate: Date.now(),
+          agentSpeech: undefined,
+        }));
+      });
+
+      registerTransport("audio_interrupted", () => {
+        assistantStreamRef.current = null;
+        setSignals((prev) => ({
+          ...prev,
+          state: "listening",
+          lastUpdate: Date.now(),
+          agentSpeech: undefined,
+        }));
+      });
+
+      registerTransport("error", (transportError) => {
+        const raw = transportError.error;
+        const err = raw instanceof Error ? raw : new Error(String(raw ?? "Realtime transport error"));
+        console.error("Realtime transport error", err);
+        setSignals({ state: "error", lastUpdate: Date.now(), error: err.message });
+        onError?.(err);
+      });
+
+      registerTransport("*", (event: TransportEvent) => {
+        if (event.type === "conversation.item.input_audio_transcription.completed") {
+          const completed = event as TranscriptCompletedEvent;
+          const transcript = completed.transcript ?? "";
+          if (!transcript) return;
+          handleUserTranscript(transcript);
+        }
+      });
+
+      const handleSessionError = (payload: RealtimeSessionErrorPayload) => {
+        const base = payload.error;
+        const err = base instanceof Error ? base : new Error(String(base ?? "Unknown realtime error"));
+        console.error("Realtime session error", err);
+        setSignals({ state: "error", lastUpdate: Date.now(), error: err.message });
+        onError?.(err);
+      };
+
+      session.on("error", handleSessionError);
+      registerCleanup(() => session.off("error", handleSessionError));
+
+      const handleAudioStart = () => {
+        setSignals((prev) => ({
+          ...prev,
+          state: "speaking",
+          lastUpdate: Date.now(),
+        }));
+      };
+      session.on("audio_start", handleAudioStart);
+      registerCleanup(() => session.off("audio_start", handleAudioStart));
+
+      const handleAudioStopped = () => {
+        setSignals((prev) => ({
+          ...prev,
+          state: "listening",
+          lastUpdate: Date.now(),
+          agentSpeech: undefined,
+        }));
+      };
+      session.on("audio_stopped", handleAudioStopped);
+      registerCleanup(() => session.off("audio_stopped", handleAudioStopped));
 
       await session.connect({ apiKey: secret });
 
@@ -229,16 +341,26 @@ export function useRealtimeAgent({ onMessages, onStreamUpdate, onError }: UseRea
       setSignals({ state: "error", lastUpdate: Date.now(), error: err.message });
       sessionRef.current = null;
       agentRef.current = null;
+      clearRegisteredListeners();
       throw err;
     }
-  }, [finalizeAssistantMessage, flushPending, handleAssistantDelta, onError, onMessages, reset]);
+  }, [
+    clearRegisteredListeners,
+    finalizeAssistantMessage,
+    flushPending,
+    handleAssistantDelta,
+    handleUserTranscript,
+    registerCleanup,
+    onError,
+    reset,
+  ]);
 
   const stopSession = useCallback(async () => {
     const session = sessionRef.current;
     if (!session) return;
     try {
       await flushPending();
-      session.disconnect();
+      session.close();
     } catch (error) {
       console.error("Failed to stop realtime session", error);
     } finally {
@@ -250,7 +372,7 @@ export function useRealtimeAgent({ onMessages, onStreamUpdate, onError }: UseRea
 
   useEffect(() => {
     return () => {
-      stopSession();
+      void stopSession();
     };
   }, [stopSession]);
 

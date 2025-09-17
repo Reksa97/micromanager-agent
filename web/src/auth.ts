@@ -4,6 +4,7 @@ import type { User } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import { ObjectId } from "mongodb";
+import { z } from "zod";
 
 import { env } from "@/env";
 import client from "@/lib/db";
@@ -17,6 +18,11 @@ const clientPromise = (async () => {
   }
   return client;
 })();
+
+const credentialsSchema = z.object({
+  email: z.string().email().trim(),
+  password: z.string().min(1).trim(),
+});
 
 type AdapterUser = {
   _id: ObjectId;
@@ -44,14 +50,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials.password) {
-          console.warn("[auth][credentials] missing email/password field");
+        const parsed = credentialsSchema.safeParse(credentials ?? {});
+        if (!parsed.success) {
+          console.warn("[auth][credentials] missing or invalid email/password field");
           return null;
         }
 
         const client = await clientPromise;
-        const normalizedEmail = credentials.email.trim().toLowerCase();
-        const normalizedPassword = credentials.password.trim();
+        const normalizedEmail = parsed.data.email.toLowerCase();
+        const normalizedPassword = parsed.data.password;
         console.warn("[auth][credentials] checking user", normalizedEmail);
         const user = await client
           .db()

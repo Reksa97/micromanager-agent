@@ -18,16 +18,15 @@ export async function POST() {
       "OpenAI-Beta": "realtime=v1",
     },
     body: JSON.stringify({
-      expires_in: 600,
+      expires_after: {
+        anchor: "created_at",
+        seconds: 600,
+      },
       session: {
         type: "realtime",
         model: MODELS.realtime,
-        voice: "verse",
         instructions:
           "You are Micromanager, a fast realtime copilot. Keep track of commitments, surface blockers, and confirm next steps aloud.",
-        metadata: {
-          userId: session.user.id,
-        },
       },
     }),
   });
