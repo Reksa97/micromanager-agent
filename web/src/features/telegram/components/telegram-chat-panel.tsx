@@ -8,7 +8,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { Send, Loader2, AlertCircle, Phone, PhoneOff, Zap } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  AlertCircle,
+  Phone,
+  PhoneOff,
+  Zap,
+  Lightbulb,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -206,6 +214,14 @@ export function TelegramChatPanel({
 
       const data = await response.json();
 
+      const metadata: StoredMessage["metadata"] = {};
+      if (typeof data.tokensUsed === "number") {
+        metadata.tokensUsed = data.tokensUsed;
+      }
+      if (typeof data.reasoning === "string" && data.reasoning.trim().length > 0) {
+        metadata.reasoning = data.reasoning.trim();
+      }
+
       const assistantMessage: StoredMessage = {
         id: Date.now().toString() + "-assistant",
         content: data.response,
@@ -215,9 +231,7 @@ export function TelegramChatPanel({
         type: "text",
         userId: userId,
         source: "micromanager",
-        metadata: {
-          tokensUsed: data.tokensUsed,
-        },
+        metadata: Object.keys(metadata).length ? metadata : undefined,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -349,26 +363,28 @@ export function TelegramChatPanel({
                 msg.role === "user" ? "justify-end" : "justify-start"
               )}
             >
-              <div
-                className={cn(
-                  "max-w-[80%] rounded-lg px-4 py-2",
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
-                )}
-              >
-                <p className="whitespace-pre-wrap break-words text-sm">
-                  {msg.content}
-                </p>
-                {msg.metadata?.tokensUsed && (
-                  <div className="mt-1 flex items-center gap-1 opacity-60">
-                    <Zap className="h-2.5 w-2.5" />
-                    <span className="text-[10px]">
-                      {msg.metadata.tokensUsed} tokens
-                    </span>
-                  </div>
-                )}
-              </div>
+              {msg.role === "assistant" ? (
+                <AssistantBubble message={msg} />
+              ) : (
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-lg px-4 py-2",
+                    "bg-primary text-primary-foreground"
+                  )}
+                >
+                  <p className="whitespace-pre-wrap break-words text-sm">
+                    {msg.content}
+                  </p>
+                  {msg.metadata?.tokensUsed && (
+                    <div className="mt-1 flex items-center gap-1 opacity-60">
+                      <Zap className="h-2.5 w-2.5" />
+                      <span className="text-[10px]">
+                        {msg.metadata.tokensUsed} tokens
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
           {isLoading && (
@@ -416,6 +432,43 @@ export function TelegramChatPanel({
           </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+interface AssistantBubbleProps {
+  message: StoredMessage;
+}
+
+function AssistantBubble({ message }: AssistantBubbleProps) {
+  const reasoning =
+    typeof message.metadata?.reasoning === "string"
+      ? message.metadata.reasoning
+      : undefined;
+
+  return (
+    <div className="max-w-[80%] space-y-2 rounded-lg bg-muted px-4 py-3">
+      <p className="whitespace-pre-wrap break-words text-sm text-foreground">
+        {message.content || "(no response)"}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+        {message.metadata?.tokensUsed ? (
+          <span className="flex items-center gap-1">
+            <Zap className="h-2.5 w-2.5" />
+            {message.metadata.tokensUsed} tokens
+          </span>
+        ) : null}
+        {reasoning ? (
+          <details className="group rounded-md border border-border/60 bg-background/40 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground transition-colors group-open:text-foreground">
+              <Lightbulb className="h-3 w-3" /> Reasoning
+            </summary>
+            <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground/90">
+              {reasoning}
+            </pre>
+          </details>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { OpenAI } from "openai";
-import { insertMessage, getRecentMessages } from "@/lib/conversations";
+import { insertMessage, getRecentMessages, type StoredMessage } from "@/lib/conversations";
 import { env } from "@/env";
 
 const openai = new OpenAI({
@@ -66,9 +66,21 @@ export async function POST(req: NextRequest) {
       max_tokens: 500,
     });
 
+    const choice = completion.choices[0];
     const aiResponse =
-      completion.choices[0].message.content ||
-      "I couldn't generate a response.";
+      choice.message.content || "I couldn't generate a response.";
+    const tokensUsed = completion.usage?.total_tokens ?? null;
+    const reasoning =
+      (choice as { message?: { reasoning?: string } }).message?.reasoning ??
+      null;
+
+    const assistantMetadata: StoredMessage["metadata"] = {};
+    if (typeof tokensUsed === "number" && tokensUsed > 0) {
+      assistantMetadata.tokensUsed = tokensUsed;
+    }
+    if (typeof reasoning === "string" && reasoning.trim().length > 0) {
+      assistantMetadata.reasoning = reasoning.trim();
+    }
 
     // Store assistant response
     await insertMessage({
@@ -79,9 +91,16 @@ export async function POST(req: NextRequest) {
       source: "micromanager",
       createdAt: new Date(),
       updatedAt: new Date(),
+      metadata: Object.keys(assistantMetadata).length
+        ? assistantMetadata
+        : undefined,
     });
 
-    return NextResponse.json({ content: aiResponse });
+    return NextResponse.json({
+      response: aiResponse,
+      tokensUsed,
+      reasoning,
+    });
   } catch (error) {
     console.error("Telegram chat error:", error);
     return NextResponse.json(

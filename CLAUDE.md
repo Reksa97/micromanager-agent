@@ -9,7 +9,7 @@ A multi-platform AI agent system with web, voice, and Telegram interfaces. Users
 - **Framework**: Next.js 15.5.3 with App Router
 - **Database**: MongoDB (via DATABASE_URL)
 - **Authentication**: NextAuth.js for web, JWT for Telegram
-- **AI**: OpenAI GPT models (GPT-4o, GPT-4o-mini)
+- **AI**: OpenAI GPT models (GPT-5, GPT-5 mini and nano)
 - **Realtime**: OpenAI Realtime API for voice
 - **Telegram**: Grammy bot framework, Telegram Mini Apps SDK
 - **UI**: Tailwind CSS, shadcn/ui components

@@ -1,6 +1,12 @@
-import { tool as defineRealtimeTool } from "@openai/agents-core";
+import { tool as defineRealtimeTool } from "@openai/agents-realtime";
 
-import { BASE_TOOL_DESCRIPTION, CONTEXT_TOOLSET_NAME, deleteSchema, readSchema, setSchema } from "./context-tools.shared";
+import {
+  BASE_TOOL_DESCRIPTION,
+  CONTEXT_TOOLSET_NAME,
+  deleteSchema,
+  readSchema,
+  setSchema,
+} from "./context-tools.shared";
 
 interface RealtimeToolsetOptions {
   onResult?: (payload: {
@@ -13,7 +19,9 @@ interface RealtimeToolsetOptions {
   getAuthToken?: () => string | null;
 }
 
-export function createRealtimeContextTools(options: RealtimeToolsetOptions = {}) {
+export function createRealtimeContextTools(
+  options: RealtimeToolsetOptions = {}
+) {
   const makeFetcher = async (body: Record<string, unknown>) => {
     const headers: HeadersInit = {
       "Content-Type": "application/json",
@@ -33,7 +41,10 @@ export function createRealtimeContextTools(options: RealtimeToolsetOptions = {})
       throw new Error(message || "Failed to run context tool");
     }
 
-    const data = (await response.json()) as { output: string; metadata?: Record<string, unknown> };
+    const data = (await response.json()) as {
+      output: string;
+      metadata?: Record<string, unknown>;
+    };
     return data;
   };
 
@@ -48,13 +59,22 @@ export function createRealtimeContextTools(options: RealtimeToolsetOptions = {})
 
   const readTool = defineRealtimeTool({
     name: "read_user_context",
-    description: "Retrieve the latest snapshot of the user's private context document.",
+    description:
+      "Retrieve the latest snapshot of the user's private context document.",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     parameters: readSchema as any,
     async execute(args: { format?: string }) {
       return wrap(async () => {
-        const result = await makeFetcher({ action: "get", format: args?.format ?? "json" });
-        options.onResult?.({ toolName: "read_user_context", output: result.output, metadata: result.metadata, args });
+        const result = await makeFetcher({
+          action: "get",
+          format: args?.format ?? "json",
+        });
+        options.onResult?.({
+          toolName: "read_user_context",
+          output: result.output,
+          metadata: result.metadata,
+          args,
+        });
         return result.output;
       });
     },
@@ -67,7 +87,11 @@ export function createRealtimeContextTools(options: RealtimeToolsetOptions = {})
     parameters: setSchema as any,
     async execute(args: { segments: string[]; value: unknown }) {
       return wrap(async () => {
-        const result = await makeFetcher({ action: "set", segments: args.segments, value: args.value });
+        const result = await makeFetcher({
+          action: "set",
+          segments: args.segments,
+          value: args.value,
+        });
         options.onResult?.({
           toolName: "set_user_context_entry",
           output: result.output,
@@ -86,7 +110,10 @@ export function createRealtimeContextTools(options: RealtimeToolsetOptions = {})
     parameters: deleteSchema as any,
     async execute(args: { segments: string[] }) {
       return wrap(async () => {
-        const result = await makeFetcher({ action: "delete", segments: args.segments });
+        const result = await makeFetcher({
+          action: "delete",
+          segments: args.segments,
+        });
         options.onResult?.({
           toolName: "delete_user_context_entry",
           output: result.output,
@@ -110,7 +137,9 @@ export function normalizeToolArguments(raw: string | undefined) {
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    throw new Error("Invalid JSON payload supplied by the model for tool invocation");
+    throw new Error(
+      "Invalid JSON payload supplied by the model for tool invocation"
+    );
   }
 }
 
