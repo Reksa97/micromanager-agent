@@ -9,10 +9,17 @@ import {
   type StoredMessage,
 } from "@/lib/conversations";
 import { notifyTelegramUser } from "@/lib/telegram/bot";
-import { MODELS, openai } from "@/lib/openai";
+import { openai } from "@/lib/openai";
+import { MODELS } from "@/lib/utils";
 import { normalizeToolArguments } from "@/lib/agent/context-tools";
-import { createServerContextToolset, type ToolInvocationResult } from "@/lib/agent/context-tools.server";
-import { formatContextForPrompt, getUserContextDocument } from "@/lib/user-context";
+import {
+  createServerContextToolset,
+  type ToolInvocationResult,
+} from "@/lib/agent/context-tools.server";
+import {
+  formatContextForPrompt,
+  getUserContextDocument,
+} from "@/lib/user-context";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
@@ -21,7 +28,6 @@ import type {
 
 const requestSchema = z.object({
   message: z.string().min(1),
-  temperature: z.number().min(0).max(2).optional(),
 });
 
 const STREAM_UPDATE_INTERVAL_MS = 1_000;
@@ -45,75 +51,118 @@ type StreamResult =
       toolCalls: AggregatedToolCall[];
     };
 
-function toChatMessages(history: StoredMessage[]): ChatCompletionMessageParam[] {
+function toChatMessages(
+  history: StoredMessage[]
+): ChatCompletionMessageParam[] {
   const messages: ChatCompletionMessageParam[] = [];
   const toolResponseIds = new Set<string>();
 
   for (const entry of history) {
     if (entry.role !== "tool") continue;
     const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
-    const toolCallId = typeof metadata.toolCallId === "string" ? metadata.toolCallId : undefined;
+    const toolCallId =
+      typeof metadata.toolCallId === "string" ? metadata.toolCallId : undefined;
     if (toolCallId) {
       toolResponseIds.add(toolCallId);
     }
   }
 
   const pendingToolCalls = new Set<string>();
+  const deferredToolMessages = new Map<string, StoredMessage>();
 
   for (const entry of history) {
     const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
 
     if (entry.role === "tool") {
-      const toolCallId = typeof metadata.toolCallId === "string" ? metadata.toolCallId : undefined;
-      if (!toolCallId || !pendingToolCalls.has(toolCallId)) {
+      const toolCallId =
+        typeof metadata.toolCallId === "string"
+          ? metadata.toolCallId
+          : undefined;
+      if (!toolCallId) {
         continue;
       }
-      messages.push({
-        role: "tool",
-        content: entry.content,
-        tool_call_id: toolCallId,
-      });
-      pendingToolCalls.delete(toolCallId);
+      if (pendingToolCalls.has(toolCallId)) {
+        messages.push({
+          role: "tool",
+          content: entry.content,
+          tool_call_id: toolCallId,
+        });
+        pendingToolCalls.delete(toolCallId);
+        continue;
+      }
+      if (!deferredToolMessages.has(toolCallId)) {
+        deferredToolMessages.set(toolCallId, entry);
+      }
       continue;
     }
 
     if (entry.role === "assistant" && Array.isArray(metadata.toolCalls)) {
-      const aggregatedToolCalls = (metadata.toolCalls as unknown[]).flatMap((item) => {
-        if (!item || typeof item !== "object") return [];
-        const tc = item as { id?: unknown; name?: unknown; arguments?: unknown };
-        if (typeof tc.id !== "string" || typeof tc.name !== "string" || typeof tc.arguments !== "string") {
-          return [];
+      const aggregatedToolCalls = (metadata.toolCalls as unknown[]).flatMap(
+        (item) => {
+          if (!item || typeof item !== "object") return [];
+          const tc = item as {
+            id?: unknown;
+            name?: unknown;
+            arguments?: unknown;
+          };
+          if (
+            typeof tc.id !== "string" ||
+            typeof tc.name !== "string" ||
+            typeof tc.arguments !== "string"
+          ) {
+            return [];
+          }
+          return [
+            {
+              id: tc.id,
+              name: tc.name,
+              arguments: tc.arguments,
+            },
+          ];
         }
-        return [
-          {
-            id: tc.id,
-            name: tc.name,
-            arguments: tc.arguments,
-          },
-        ];
-      });
+      );
 
-      const executableToolCalls = aggregatedToolCalls.filter((call) => toolResponseIds.has(call.id));
+      const executableToolCalls = aggregatedToolCalls.filter((call) =>
+        toolResponseIds.has(call.id)
+      );
 
       if (executableToolCalls.length > 0) {
         messages.push({
           role: "assistant",
           content: entry.content ?? "",
-          tool_calls: executableToolCalls.map<ChatCompletionMessageToolCall>((call) => ({
-            id: call.id,
-            type: "function",
-            function: {
-              name: call.name,
-              arguments: call.arguments,
-            },
-          })),
+          tool_calls: executableToolCalls.map<ChatCompletionMessageToolCall>(
+            (call) => ({
+              id: call.id,
+              type: "function",
+              function: {
+                name: call.name,
+                arguments: call.arguments,
+              },
+            })
+          ),
         });
-        executableToolCalls.forEach((call) => pendingToolCalls.add(call.id));
+        executableToolCalls.forEach((call) => {
+          pendingToolCalls.add(call.id);
+          const deferred = deferredToolMessages.get(call.id);
+          if (deferred) {
+            messages.push({
+              role: "tool",
+              content: deferred.content,
+              tool_call_id: call.id,
+            });
+            pendingToolCalls.delete(call.id);
+            deferredToolMessages.delete(call.id);
+          }
+        });
         continue;
       }
     }
 
-    if (entry.role === "assistant" || entry.role === "user" || entry.role === "system") {
+    if (
+      entry.role === "assistant" ||
+      entry.role === "user" ||
+      entry.role === "system"
+    ) {
       messages.push({
         role: entry.role,
         content: entry.content,
@@ -127,17 +176,14 @@ function toChatMessages(history: StoredMessage[]): ChatCompletionMessageParam[] 
 async function streamChatCompletion({
   messages,
   tools,
-  temperature,
   assistantMessageId,
 }: {
   messages: ChatCompletionMessageParam[];
   tools: ChatCompletionTool[];
-  temperature: number;
   assistantMessageId: string;
 }): Promise<StreamResult> {
   const stream = await openai.chat.completions.create({
-    model: MODELS.text,
-    temperature,
+    model: MODELS.textBudget,
     messages,
     stream: true,
     tools,
@@ -175,7 +221,11 @@ async function streamChatCompletion({
     if (Array.isArray(delta?.tool_calls)) {
       for (const toolCallDelta of delta.tool_calls) {
         const index = toolCallDelta.index ?? 0;
-        const existing = toolCalls.get(index) ?? { id: "", name: "", arguments: "" };
+        const existing = toolCalls.get(index) ?? {
+          id: "",
+          name: "",
+          arguments: "",
+        };
         if (toolCallDelta.id) {
           existing.id = toolCallDelta.id;
         }
@@ -228,12 +278,15 @@ export async function POST(request: Request) {
   const parseResult = requestSchema.safeParse(json);
   if (!parseResult.success) {
     return NextResponse.json(
-      { error: "Invalid payload", details: parseResult.error.flatten().fieldErrors },
-      { status: 422 },
+      {
+        error: "Invalid payload",
+        details: parseResult.error.flatten().fieldErrors,
+      },
+      { status: 422 }
     );
   }
 
-  const { message, temperature = 0.7 } = parseResult.data;
+  const { message } = parseResult.data;
   const userId = session.user.id;
 
   let activeAssistantMessageId: string | null = null;
@@ -274,9 +327,11 @@ export async function POST(request: Request) {
     });
 
     // Try to notify Telegram user about the new message
-    notifyTelegramUser(userId, `💬 New message from web:\n\n${message}`).catch((error) => {
-      console.error("Failed to send Telegram notification:", error);
-    });
+    notifyTelegramUser(userId, `💬 New message from web:\n\n${message}`).catch(
+      (error) => {
+        console.error("Failed to send Telegram notification:", error);
+      }
+    );
 
     const assistantPlaceholderId = await insertMessage({
       userId,
@@ -298,7 +353,6 @@ export async function POST(request: Request) {
       const result = await streamChatCompletion({
         messages: messagesForModel,
         tools: serverToolset.tools,
-        temperature,
         assistantMessageId: currentAssistantId,
       });
 
@@ -311,11 +365,17 @@ export async function POST(request: Request) {
         });
 
         // Try to notify Telegram user about the assistant response
-        notifyTelegramUser(userId, `🤖 Assistant response:\n\n${finalContent}`).catch((error) => {
+        notifyTelegramUser(
+          userId,
+          `🤖 Assistant response:\n\n${finalContent}`
+        ).catch((error) => {
           console.error("Failed to send Telegram notification:", error);
         });
 
-        return NextResponse.json({ messageId: currentAssistantId, content: finalContent });
+        return NextResponse.json({
+          messageId: currentAssistantId,
+          content: finalContent,
+        });
       }
 
       // Tool calls branch
@@ -332,14 +392,16 @@ export async function POST(request: Request) {
       const assistantToolMessage: ChatCompletionMessageParam = {
         role: "assistant",
         content: assistantSummary,
-        tool_calls: result.toolCalls.map<ChatCompletionMessageToolCall>((call) => ({
-          id: call.id,
-          type: "function",
-          function: {
-            name: call.name,
-            arguments: call.arguments,
-          },
-        })),
+        tool_calls: result.toolCalls.map<ChatCompletionMessageToolCall>(
+          (call) => ({
+            id: call.id,
+            type: "function",
+            function: {
+              name: call.name,
+              arguments: call.arguments,
+            },
+          })
+        ),
       };
 
       messagesForModel = [...messagesForModel, assistantToolMessage];
@@ -409,7 +471,8 @@ export async function POST(request: Request) {
       activeAssistantMessageId = nextAssistantId;
     }
 
-    const fallbackMessage = "Tool loop limit reached before producing a final response.";
+    const fallbackMessage =
+      "Tool loop limit reached before producing a final response.";
     if (activeAssistantMessageId) {
       await updateMessage(activeAssistantMessageId, {
         content: fallbackMessage,
@@ -430,7 +493,10 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ error: "Unable to generate response" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Unable to generate response" },
+      { status: 500 }
+    );
   }
 }
 

@@ -5,7 +5,6 @@ import { SignJWT } from "jose";
 import { env } from "@/env";
 import { getMongoClient } from "@/lib/db";
 import { upsertTelegramUser } from "@/lib/telegram/bot";
-import { UserTier } from "@/types/user";
 
 interface TelegramAuthUser {
   id: number;
@@ -299,7 +298,6 @@ export async function POST(req: NextRequest) {
       email: telegramUser.username,
       telegramChatId: resolvedChatId,
       name: telegramUser.first_name || telegramUser.username || "User",
-      tier: userTier as UserTier,
       lastLogin: new Date(),
     });
 

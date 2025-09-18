@@ -1,3 +1,5 @@
+import { MODELS } from "@/lib/utils";
+
 export type UserTier = "free" | "paid" | "admin";
 
 export interface TierPermissions {
@@ -21,16 +23,16 @@ export const TIER_PERMISSIONS: Record<UserTier, TierPermissions> = {
   free: {
     hasVoiceAccess: false,
     hasRealtimeAccess: false,
-    models: ["gpt-5-nano"],
+    models: [MODELS.textBudget],
   },
   paid: {
     hasVoiceAccess: true,
     hasRealtimeAccess: true,
-    models: ["gpt-5-mini", "gpt-5"],
+    models: [MODELS.text, MODELS.textBudget, MODELS.realtime],
   },
   admin: {
     hasVoiceAccess: true,
     hasRealtimeAccess: true,
-    models: ["gpt-5-mini", "gpt-5"],
+    models: [MODELS.text, MODELS.textBudget, MODELS.realtime],
   },
 };

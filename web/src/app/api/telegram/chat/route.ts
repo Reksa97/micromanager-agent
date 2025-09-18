@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { OpenAI } from "openai";
-import { insertMessage, getRecentMessages, type StoredMessage } from "@/lib/conversations";
+import {
+  insertMessage,
+  getRecentMessages,
+  type StoredMessage,
+} from "@/lib/conversations";
 import { env } from "@/env";
+import { MODELS } from "@/lib/utils";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -58,12 +63,10 @@ export async function POST(req: NextRequest) {
       })),
     ];
 
-    // Call GPT-4o-mini
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: MODELS.textBudget,
       messages,
-      temperature: 0.7,
-      max_tokens: 500,
+      max_completion_tokens: 500,
     });
 
     const choice = completion.choices[0];

@@ -30,7 +30,7 @@ export async function getTelegramUserByTelegramId(
 }
 
 export async function upsertTelegramUser(
-  telegramUser: Omit<UserProfile, "_id" | "createdAt" | "updatedAt">
+  telegramUser: Omit<UserProfile, "_id" | "createdAt" | "updatedAt" | "tier">
 ): Promise<void> {
   const col = await telegramUsersCollection();
   const now = new Date();

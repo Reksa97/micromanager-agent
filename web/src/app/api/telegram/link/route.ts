@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { linkTelegramUserToAccount, upsertTelegramUser } from "@/lib/telegram/bot";
+import {
+  linkTelegramUserToAccount,
+  upsertTelegramUser,
+} from "@/lib/telegram/bot";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,27 +13,31 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { telegramId, userId, firstName, lastName, username } = body;
+    const { telegramId, userId, firstName, username } = body;
 
     if (!telegramId) {
-      return NextResponse.json({ error: "Telegram ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Telegram ID is required" },
+        { status: 400 }
+      );
     }
 
     await upsertTelegramUser({
       telegramId,
-      userId,
-      firstName,
-      lastName,
-      username,
-      chatId: telegramId,
-      isActive: true,
+      id: userId,
+      name: firstName,
+      email: username,
+      telegramChatId: telegramId,
+      lastLogin: new Date(),
     });
-
     await linkTelegramUserToAccount(telegramId, userId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error linking Telegram account:", error);
-    return NextResponse.json({ error: "Failed to link account" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to link account" },
+      { status: 500 }
+    );
   }
 }

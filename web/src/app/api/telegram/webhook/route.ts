@@ -1,8 +1,13 @@
 import { NextRequest } from "next/server";
 import { Bot } from "grammy";
-import { initBot, upsertTelegramUser, getTelegramUserByTelegramId } from "@/lib/telegram/bot";
+import {
+  initBot,
+  upsertTelegramUser,
+  getTelegramUserByTelegramId,
+} from "@/lib/telegram/bot";
 import { insertMessage } from "@/lib/conversations";
 import { OpenAI } from "openai";
+import { MODELS } from "@/lib/utils";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -20,7 +25,6 @@ async function setupBot() {
     bot.command("start", async (ctx) => {
       const telegramId = ctx.from?.id;
       const firstName = ctx.from?.first_name || "";
-      const lastName = ctx.from?.last_name || "";
       const username = ctx.from?.username || "";
       const chatId = ctx.chat.id;
 
@@ -31,20 +35,20 @@ async function setupBot() {
 
       await upsertTelegramUser({
         telegramId,
-        firstName,
-        lastName,
-        username,
-        chatId,
-        isActive: true,
+        name: firstName,
+        email: username,
+        telegramChatId: chatId,
+        id: `telegram_${telegramId}`,
+        lastLogin: new Date(),
       });
 
       await ctx.reply(
         `Welcome ${firstName}! 👋\n\n` +
-        `I'm your Micromanager Agent assistant. You can:\n` +
-        `• Send me messages and I'll help you\n` +
-        `• Use /link <code> to link your web account\n` +
-        `• Open the Mini App for a richer experience\n\n` +
-        `How can I assist you today?`,
+          `I'm your Micromanager Agent assistant. You can:\n` +
+          `• Send me messages and I'll help you\n` +
+          `• Use /link <code> to link your web account\n` +
+          `• Open the Mini App for a richer experience\n\n` +
+          `How can I assist you today?`,
         { parse_mode: "HTML" }
       );
     });
@@ -56,7 +60,9 @@ async function setupBot() {
         return;
       }
 
-      await ctx.reply("Feature coming soon: Account linking with code: " + code);
+      await ctx.reply(
+        "Feature coming soon: Account linking with code: " + code
+      );
     });
 
     bot.on("message:text", async (ctx) => {
@@ -71,15 +77,15 @@ async function setupBot() {
       if (!telegramUser) {
         await upsertTelegramUser({
           telegramId,
-          firstName: ctx.from?.first_name || "",
-          lastName: ctx.from?.last_name || "",
-          username: ctx.from?.username || "",
-          chatId,
-          isActive: true,
+          email: ctx.from?.username || "",
+          name: ctx.from?.first_name || ctx.from?.username || "",
+          telegramChatId: chatId,
+          id: `telegram_${telegramId}`,
+          lastLogin: new Date(),
         });
       }
 
-      const userId = telegramUser?.userId || `telegram_${telegramId}`;
+      const userId = telegramUser?.id ?? `telegram_${telegramId}`;
 
       await insertMessage({
         userId,
@@ -99,16 +105,18 @@ async function setupBot() {
           messages: [
             {
               role: "system",
-              content: "You are a helpful assistant for the Micromanager Agent platform. Keep responses concise and helpful.",
+              content:
+                "You are a helpful assistant for the Micromanager Agent platform. Keep responses concise and helpful.",
             },
             { role: "user", content: text },
           ],
-          model: "gpt-4o-mini",
-          temperature: 0.7,
-          max_tokens: 500,
+          model: MODELS.textBudget,
+          max_completion_tokens: 500,
         });
 
-        const aiResponse = completion.choices[0].message.content || "I couldn't generate a response.";
+        const aiResponse =
+          completion.choices[0].message.content ||
+          "I couldn't generate a response.";
 
         await insertMessage({
           userId,
@@ -124,7 +132,9 @@ async function setupBot() {
         await ctx.reply(aiResponse, { parse_mode: "Markdown" });
       } catch (error) {
         console.error("Error processing Telegram message:", error);
-        await ctx.reply("Sorry, I encountered an error processing your message. Please try again.");
+        await ctx.reply(
+          "Sorry, I encountered an error processing your message. Please try again."
+        );
       }
     });
 

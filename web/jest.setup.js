@@ -1,11 +1,11 @@
-// Add custom jest matchers
+/* eslint-disable @typescript-eslint/no-require-imports */
 require('@testing-library/jest-dom');
+const { mockMongoClient } = require('./src/lib/testing/db-mock');
 
 // Mock server-only module
 jest.mock('server-only', () => ({}), { virtual: true });
 
 // Mock MongoDB client for faster tests
-const { mockMongoClient } = require('./src/lib/testing/db-mock');
 jest.mock('@/lib/db', () => ({
   __esModule: true,
   default: mockMongoClient,
@@ -15,7 +15,6 @@ jest.mock('@/lib/db', () => ({
 // Set test environment variables
 process.env.NODE_ENV = 'test';
 process.env.MONGODB_URI = 'mongodb://localhost:27017/test';
-process.env.DATABASE_URL = 'mongodb://localhost:27017/test';
 process.env.NEXTAUTH_SECRET = 'test-secret';
 process.env.NEXTAUTH_URL = 'http://localhost:3000';
 process.env.OPENAI_API_KEY = 'test-key';

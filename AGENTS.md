@@ -1,6 +1,7 @@
 # Agents
 
 ## Micromanager Operations Copilot
+
 - **Type:** Hybrid text + voice GPT Realtime agent
 - **Entry point:** `src/features/chat/components/chat-panel.tsx`
 - **Realtime session bootstrap:** `/api/realtime/session`
@@ -13,12 +14,14 @@
 - **Authentication:** Auth.js credential login backed by MongoDB adapter
 
 ## Text Chat Fallback
-- **Type:** GPT text completion (`gpt-4o-mini` by default)
+
+- **Type:** GPT text completion (`gpt-5-mini` by default)
 - **API route:** `/api/chat`
 - **Streaming:** Server-sent streaming of assistant tokens to the UI with final persistence on completion and automatic tool-call replay
 - **Usage:** Automatically powers the chat panel when realtime session is not active or prior to session bootstrap
 
 ## Voice Session Transport
+
 - **Hook:** `useRealtimeAgent`
 - **Library:** `@openai/agents-realtime`
 - **Behaviours:**

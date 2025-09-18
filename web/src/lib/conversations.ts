@@ -38,7 +38,7 @@ export async function getRecentMessages(userId: string, limit = 50) {
   const col = await collection();
   const docs = await col
     .find({ userId })
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: -1, _id: -1 })
     .limit(limit)
     .toArray();
   return docs.reverse();

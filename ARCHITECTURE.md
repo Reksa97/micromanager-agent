@@ -8,7 +8,7 @@
 - **Data:** MongoDB Atlas (connection string via `MONGODB_URI`), dedicated collections for users and conversation messages
 - **AI:** OpenAI GPT APIs
   - `gpt-realtime` via WebRTC (voice + actions)
-  - `gpt-4o-mini` (text fallback streaming)
+  - `gpt-5-mini` (text fallback streaming)
 - **UI Enhancements:** `framer-motion`, Radix UI primitives, Sonner toasts
 
 ## Runtime Flow

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { env } from "@/env";
-import { MODELS } from "@/lib/openai";
+import { MODELS } from "@/lib/utils";
 import { jwtVerify } from "jose";
 
 export async function POST(request: NextRequest) {
