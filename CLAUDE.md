@@ -75,14 +75,41 @@ Users with `tier: admin` can access `/admin` to:
 
 ## Environment Variables
 
+Required environment variables for local development and Vercel deployment:
+
 ```
-MONGODB_URI=mongodb://...
-AUTH_SECRET=...
-OPENAI_API_KEY=...
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_WEBHOOK_SECRET=...
-ALLOW_USER_REGISTRATION=true
+MONGODB_URI=mongodb+srv://...    # MongoDB Atlas connection string
+AUTH_SECRET=...                  # Random secret for JWT signing
+OPENAI_API_KEY=sk-proj-...       # OpenAI API key
+TELEGRAM_BOT_TOKEN=...           # Telegram bot token from @BotFather
+TELEGRAM_WEBHOOK_SECRET=...      # Random secret for webhook validation
+ALLOW_USER_REGISTRATION=true     # Allow new user signups
 ```
+
+## Vercel Deployment
+
+### Known Issues & Solutions
+
+1. **MongoDB SSL/TLS Connection Error**
+   - Error: `SSL routines:ssl3_read_bytes:tlsv1 alert internal error`
+   - Solution: The MongoDB client has been configured with proper SSL settings and connection pooling for serverless environments
+
+2. **Environment Variables**
+   - All environment variables must be added via Vercel Dashboard → Settings → Environment Variables
+   - Do NOT commit `.env` files to the repository
+
+3. **MongoDB Connection Best Practices**
+   - The app uses a cached connection promise to reuse connections across serverless function invocations
+   - Connection pooling is handled automatically by the MongoDB driver
+   - SSL/TLS is enabled for secure connections to MongoDB Atlas
+
+### Deployment Steps
+
+1. Push code to GitHub
+2. Connect repository to Vercel
+3. Add all required environment variables in Vercel Dashboard
+4. Deploy (automatic on push to main branch)
+5. Set up Telegram webhook: `https://your-app.vercel.app/api/telegram/webhook`
 
 ## Testing Commands
 
