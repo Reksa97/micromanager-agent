@@ -10,15 +10,21 @@ interface RealtimeToolsetOptions {
     args: unknown;
   }) => void;
   onError?: (error: Error) => void;
+  getAuthToken?: () => string | null;
 }
 
 export function createRealtimeContextTools(options: RealtimeToolsetOptions = {}) {
   const makeFetcher = async (body: Record<string, unknown>) => {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    const token = options.getAuthToken?.();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
     const response = await fetch("/api/context", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
 

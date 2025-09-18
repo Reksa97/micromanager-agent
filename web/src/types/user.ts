@@ -9,7 +9,8 @@ export interface TierPermissions {
 export interface UserProfile {
   id: string;
   email?: string;
-  telegramId: number;
+  telegramId?: number;
+  telegramChatId?: number;
   name: string;
   tier: UserTier;
   createdAt: Date;

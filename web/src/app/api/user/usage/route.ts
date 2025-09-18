@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { getMongoClient } from "@/lib/db";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET || "telegram-mini-app-secret"
-);
+import { env } from "@/env";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify token
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, env.JWT_SECRET);
     const userId = payload.sub as string;
 
     const body = await req.json();

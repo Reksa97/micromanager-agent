@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,6 +19,8 @@ import { createRealtimeContextTools } from "@/lib/agent/context-tools";
 interface UseRealtimeAgentOptions {
   onMessages?: (messages: ChatMessage[]) => void;
   onError?: (error: Error) => void;
+  authToken?: string | null;
+  getAuthToken?: () => string | null;
 }
 
 const INITIAL_SIGNALS: VoiceSessionSignals = {
@@ -28,7 +31,11 @@ const INITIAL_SIGNALS: VoiceSessionSignals = {
 const BASE_REALTIME_INSTRUCTIONS =
   "You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items.";
 
-type TransportConnectionState = "connecting" | "connected" | "disconnected" | "disconnecting";
+type TransportConnectionState =
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "disconnecting";
 type TranscriptCompletedEvent = TransportEvent & {
   type: "conversation.item.input_audio_transcription.completed";
   transcript?: string;
@@ -40,14 +47,52 @@ type RealtimeSessionErrorPayload = {
   error: unknown;
 };
 
-export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOptions = {}) {
+export function useRealtimeAgent({
+  onMessages,
+  onError,
+  authToken,
+  getAuthToken,
+}: UseRealtimeAgentOptions = {}) {
   const sessionRef = useRef<RealtimeSession | null>(null);
   const agentRef = useRef<RealtimeAgent | null>(null);
   const assistantStreamRef = useRef<ChatMessage | null>(null);
-  const pendingForPersistence = useRef<Array<ChatMessage & { metadata?: Record<string, unknown> }>>([]);
+  const pendingForPersistence = useRef<
+    Array<ChatMessage & { metadata?: Record<string, unknown> }>
+  >([]);
   const listenerCleanupRef = useRef<(() => void)[]>([]);
+  const authTokenGetterRef = useRef<() => string | null>(
+    () => authToken ?? null
+  );
 
   const [signals, setSignals] = useState<VoiceSessionSignals>(INITIAL_SIGNALS);
+
+  useEffect(() => {
+    authTokenGetterRef.current = () => {
+      if (typeof getAuthToken === "function") {
+        try {
+          return getAuthToken() ?? null;
+        } catch (error) {
+          console.error(
+            "Failed to resolve auth token for realtime agent",
+            error
+          );
+          return null;
+        }
+      }
+      return authToken ?? null;
+    };
+  }, [authToken, getAuthToken]);
+
+  const withAuth = useCallback((init: RequestInit = {}) => {
+    const token = authTokenGetterRef.current();
+    if (!token) return init;
+    const headers = new Headers(init.headers ?? {});
+    headers.set("Authorization", `Bearer ${token}`);
+    return {
+      ...init,
+      headers,
+    } satisfies RequestInit;
+  }, []);
 
   const registerCleanup = useCallback((cleanup: () => void) => {
     listenerCleanupRef.current.push(cleanup);
@@ -83,25 +128,30 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
     if (!payload.length) return;
 
     try {
-      await fetch("/api/conversation", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      body: JSON.stringify({
-        messages: payload.map(({ role, content, kind, createdAt, metadata }) => ({
-          role,
-          content,
-          type: kind,
-          createdAt,
-          metadata,
-        })),
-      }),
-      });
+      await fetch(
+        "/api/conversation",
+        withAuth({
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messages: payload.map(
+              ({ role, content, kind, createdAt, metadata }) => ({
+                role,
+                content,
+                type: kind,
+                createdAt,
+                metadata,
+              })
+            ),
+          }),
+        })
+      );
     } catch (error) {
       console.error("Failed to persist realtime messages", error);
     }
-  }, []);
+  }, [withAuth]);
 
   const handleAssistantDelta = useCallback((delta: string) => {
     const timestamp = new Date().toISOString();
@@ -166,7 +216,7 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
         assistantResponse: trimmed,
       }));
     },
-    [onMessages],
+    [onMessages]
   );
 
   const handleUserTranscript = useCallback(
@@ -190,7 +240,7 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
         lastUpdate: Date.now(),
       }));
     },
-    [onMessages],
+    [onMessages]
   );
 
   const startSession = useCallback(async () => {
@@ -208,23 +258,35 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
       let contextSnapshot = "The user context is currently empty.";
 
       try {
-        const contextResponse = await fetch("/api/context", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ action: "get", format: "text" }),
-        });
+        const contextResponse = await fetch(
+          "/api/context",
+          withAuth({
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ action: "get", format: "text" }),
+          })
+        );
 
         if (contextResponse.ok) {
           const contextJson = await contextResponse.json();
-          const candidate = typeof contextJson?.output === "string" ? contextJson.output.trim() : "";
-          contextSnapshot = candidate.length > 0 ? candidate : "The user context is currently empty.";
+          const candidate =
+            typeof contextJson?.output === "string"
+              ? contextJson.output.trim()
+              : "";
+          contextSnapshot =
+            candidate.length > 0
+              ? candidate
+              : "The user context is currently empty.";
         } else {
           contextSnapshot = "User context could not be retrieved at this time.";
         }
       } catch (contextError) {
-        console.error("Failed to fetch user context for realtime session", contextError);
+        console.error(
+          "Failed to fetch user context for realtime session",
+          contextError
+        );
         contextSnapshot = "User context could not be retrieved at this time.";
       }
 
@@ -258,9 +320,13 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
           }));
           onError?.(toolError);
         },
+        getAuthToken: () => authTokenGetterRef.current(),
       });
 
-      const response = await fetch("/api/realtime/session", { method: "POST" });
+      const response = await fetch(
+        "/api/realtime/session",
+        withAuth({ method: "POST" })
+      );
       if (!response.ok) {
         throw new Error("Failed to initialize realtime session");
       }
@@ -288,33 +354,39 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
 
       const registerTransport = <K extends keyof RealtimeTransportEventTypes>(
         event: K,
-        handler: (...args: RealtimeTransportEventTypes[K]) => void,
+        handler: (...args: RealtimeTransportEventTypes[K]) => void
       ) => {
         transport.on(event, handler);
         registerCleanup(() => transport.off(event, handler));
       };
 
-      registerTransport("connection_change", (status: TransportConnectionState) => {
-        setSignals((prev) => ({
-          ...prev,
-          state:
-            status === "connected"
-              ? "listening"
-              : status === "connecting"
-              ? "connecting"
-              : "ended",
-          lastUpdate: Date.now(),
-          agentSpeech: status === "disconnected" || status === "disconnecting" ? undefined : prev.agentSpeech,
-          error: status === "connected" ? undefined : prev.error,
-        }));
+      registerTransport(
+        "connection_change",
+        (status: TransportConnectionState) => {
+          setSignals((prev) => ({
+            ...prev,
+            state:
+              status === "connected"
+                ? "listening"
+                : status === "connecting"
+                ? "connecting"
+                : "ended",
+            lastUpdate: Date.now(),
+            agentSpeech:
+              status === "disconnected" || status === "disconnecting"
+                ? undefined
+                : prev.agentSpeech,
+            error: status === "connected" ? undefined : prev.error,
+          }));
 
-        if (status === "disconnected" || status === "disconnecting") {
-          void flushPending();
-          sessionRef.current = null;
-          agentRef.current = null;
-          reset();
+          if (status === "disconnected" || status === "disconnecting") {
+            void flushPending();
+            sessionRef.current = null;
+            agentRef.current = null;
+            reset();
+          }
         }
-      });
+      );
 
       registerTransport("turn_started", () => {
         setSignals((prev) => ({
@@ -325,18 +397,26 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
         }));
       });
 
-      registerTransport("audio_transcript_delta", (event: TransportLayerTranscriptDelta) => {
-        handleAssistantDelta(event.delta);
-      });
+      registerTransport(
+        "audio_transcript_delta",
+        (event: TransportLayerTranscriptDelta) => {
+          handleAssistantDelta(event.delta);
+        }
+      );
 
-      registerTransport("turn_done", (event: TransportLayerResponseCompleted) => {
-        const outputItems = event.response.output ?? [];
-        const lastItem = outputItems[outputItems.length - 1];
-        const fromItem = lastItem ? utils.getLastTextFromAudioOutputMessage(lastItem) : null;
-        const fallback = assistantStreamRef.current?.content ?? "";
-        finalizeAssistantMessage(fromItem ?? fallback);
-        void flushPending();
-      });
+      registerTransport(
+        "turn_done",
+        (event: TransportLayerResponseCompleted) => {
+          const outputItems = event.response.output ?? [];
+          const lastItem = outputItems[outputItems.length - 1];
+          const fromItem = lastItem
+            ? utils.getLastTextFromAudioOutputMessage(lastItem)
+            : null;
+          const fallback = assistantStreamRef.current?.content ?? "";
+          finalizeAssistantMessage(fromItem ?? fallback);
+          void flushPending();
+        }
+      );
 
       registerTransport("audio_done", () => {
         setSignals((prev) => ({
@@ -366,17 +446,23 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
           // fall back to raw string
         }
         const trimmed = (prettyArgs ?? "").trim();
-        const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240)}…` : trimmed;
+        const preview =
+          trimmed.length > 240 ? `${trimmed.slice(0, 240)}…` : trimmed;
         setSignals((prev) => ({
           ...prev,
-          actionSummary: `Tool ${event.name} invoked${preview ? `\n${preview}` : ""}`,
+          actionSummary: `Tool ${event.name} invoked${
+            preview ? `\n${preview}` : ""
+          }`,
           lastUpdate: Date.now(),
         }));
       });
 
       registerTransport("error", (transportError) => {
         const raw = transportError.error;
-        const err = raw instanceof Error ? raw : new Error(String(raw ?? "Realtime transport error"));
+        const err =
+          raw instanceof Error
+            ? raw
+            : new Error(String(raw ?? "Realtime transport error"));
         console.error("Realtime transport error", err);
         setSignals((prev) => ({
           ...prev,
@@ -388,7 +474,9 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
       });
 
       registerTransport("*", (event: TransportEvent) => {
-        if (event.type === "conversation.item.input_audio_transcription.completed") {
+        if (
+          event.type === "conversation.item.input_audio_transcription.completed"
+        ) {
           const completed = event as TranscriptCompletedEvent;
           const transcript = completed.transcript ?? "";
           if (!transcript) return;
@@ -398,7 +486,10 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
 
       const handleSessionError = (payload: RealtimeSessionErrorPayload) => {
         const base = payload.error;
-        const err = base instanceof Error ? base : new Error(String(base ?? "Unknown realtime error"));
+        const err =
+          base instanceof Error
+            ? base
+            : new Error(String(base ?? "Unknown realtime error"));
         console.error("Realtime session error", err);
         setSignals((prev) => ({
           ...prev,
@@ -485,9 +576,13 @@ export function useRealtimeAgent({ onMessages, onError }: UseRealtimeAgentOption
 
   return {
     voiceSignals: signals,
-    isVoiceActive: ["connecting", "listening", "processing", "speaking", "executing"].includes(
-      signals.state,
-    ),
+    isVoiceActive: [
+      "connecting",
+      "listening",
+      "processing",
+      "speaking",
+      "executing",
+    ].includes(signals.state),
     startSession,
     stopSession,
   };

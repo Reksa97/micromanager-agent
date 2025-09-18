@@ -1,15 +1,37 @@
 import { redirect } from "next/navigation";
-
 import { ChatPanel } from "@/features/chat/components/chat-panel";
 import { auth, signOut } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CopyMockUrlButton } from "@/features/telegram/components/copy-mock-url-button";
 
 export default async function Home() {
   const session = await auth();
   if (!session?.user) {
     redirect("/login");
   }
+
+  const isDevBuild = process.env.NODE_ENV === "development";
+  const devMockSecret = process.env.TELEGRAM_DEV_MOCK_SECRET;
+  let telegramMockHref: string | null = null;
+
+  if (isDevBuild && devMockSecret) {
+    const defaultId = session.user.id ?? "999001";
+
+    const mockParams = new URLSearchParams({
+      mock_secret: devMockSecret,
+      mock_user_id: String(defaultId),
+    });
+
+    telegramMockHref = `/telegram?${mockParams.toString()}`;
+  }
+
+  const absoluteMockUrl = telegramMockHref
+    ? new URL(
+        telegramMockHref,
+        process.env.NEXT_PUBLIC_SITE_URL ?? "https://127.0.0.1:3000",
+      ).toString()
+    : null;
 
   async function handleSignOut() {
     "use server";
@@ -34,6 +56,9 @@ export default async function Home() {
             <span className="font-medium text-foreground">{session.user.email ?? session.user.name ?? "User"}</span>
             <span className="text-xs text-muted-foreground">Authenticated workspace</span>
           </div>
+          {absoluteMockUrl ? (
+            <CopyMockUrlButton url={absoluteMockUrl} />
+          ) : null}
           <form action={handleSignOut}>
             <Button variant="outline" size="sm">
               Sign out

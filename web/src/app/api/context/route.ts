@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
@@ -8,6 +8,8 @@ import {
   getUserContextDocument,
   setUserContextValue,
 } from "@/lib/user-context";
+import { jwtVerify } from "jose";
+import { env } from "@/env";
 
 const getSchema = z.object({
   action: z.literal("get"),
@@ -25,11 +27,34 @@ const deleteSchema = z.object({
   segments: z.array(z.string().min(1)).min(1),
 });
 
-const requestSchema = z.discriminatedUnion("action", [getSchema, setSchema, deleteSchema]);
+const requestSchema = z.discriminatedUnion("action", [
+  getSchema,
+  setSchema,
+  deleteSchema,
+]);
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) {
+  let userId = session?.user?.id;
+
+  if (!userId) {
+    try {
+      let token = request.cookies.get("telegram-auth-token")?.value;
+      const authHeader = request.headers.get("Authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+      }
+
+      if (token) {
+        const { payload } = await jwtVerify(token, env.JWT_SECRET);
+        userId = typeof payload.sub === "string" ? payload.sub : undefined;
+      }
+    } catch (error) {
+      console.error("[Context API] Failed to verify Telegram token", error);
+    }
+  }
+
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -38,18 +63,23 @@ export async function POST(request: Request) {
 
   if (!parseResult.success) {
     return NextResponse.json(
-      { error: "Invalid payload", details: parseResult.error.flatten().fieldErrors },
-      { status: 422 },
+      {
+        error: "Invalid payload",
+        details: parseResult.error.flatten().fieldErrors,
+      },
+      { status: 422 }
     );
   }
 
-  const userId = session.user.id;
   const payload = parseResult.data;
 
   switch (payload.action) {
     case "get": {
       const doc = await getUserContextDocument(userId);
-      const output = payload.format === "text" ? formatContextForPrompt(doc) : JSON.stringify(doc.data, null, 2);
+      const output =
+        payload.format === "text"
+          ? formatContextForPrompt(doc)
+          : JSON.stringify(doc.data, null, 2);
       return NextResponse.json({
         output,
         metadata: {
@@ -59,7 +89,11 @@ export async function POST(request: Request) {
       });
     }
     case "set": {
-      const { path, updatedAt } = await setUserContextValue(userId, payload.segments, payload.value);
+      const { path, updatedAt } = await setUserContextValue(
+        userId,
+        payload.segments,
+        payload.value
+      );
       const renderedValue = JSON.stringify(payload.value, null, 2);
       return NextResponse.json({
         output: `Stored value at path "${path}":\n${renderedValue}`,
@@ -71,7 +105,10 @@ export async function POST(request: Request) {
       });
     }
     case "delete": {
-      const { path, updatedAt } = await deleteUserContextValue(userId, payload.segments);
+      const { path, updatedAt } = await deleteUserContextValue(
+        userId,
+        payload.segments
+      );
       return NextResponse.json({
         output: `Removed value at path "${path}".`,
         metadata: {
@@ -82,7 +119,9 @@ export async function POST(request: Request) {
       });
     }
     default:
-      return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Unsupported action" },
+        { status: 400 }
+      );
   }
 }
-

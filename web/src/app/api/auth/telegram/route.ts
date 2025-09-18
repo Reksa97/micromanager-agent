@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validate, parse } from "@telegram-apps/init-data-node";
 import { SignJWT } from "jose";
+
+import { env } from "@/env";
 import { getMongoClient } from "@/lib/db";
 import { upsertTelegramUser } from "@/lib/telegram/bot";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET || "telegram-mini-app-secret"
-);
+import { UserTier } from "@/types/user";
 
 interface TelegramAuthUser {
   id: number;
@@ -18,143 +17,264 @@ interface TelegramAuthUser {
   photo_url?: string;
 }
 
-export async function POST(req: NextRequest) {
-  console.log("[Telegram Auth API] Received authentication request");
+type MockTelegramUserPayload = {
+  id?: number | string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  is_premium?: boolean;
+  tier?: string;
+  chat_id?: number | string;
+  chatId?: number | string;
+};
 
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { initData, metadata } = body;
+    const { initData, metadata } = body as {
+      initData?: string;
+      metadata?: Record<string, unknown>;
+    };
 
-    console.log("[Telegram Auth API] Request metadata:", {
-      hasInitData: !!initData,
-      hasMetadata: !!metadata,
-      metadataKeys: metadata ? Object.keys(metadata) : [],
+    const mockSecret =
+      typeof body.mockSecret === "string" ? body.mockSecret : undefined;
+    const mockUser = (body.mockUser ?? null) as MockTelegramUserPayload | null;
+    const devMockSecret = env.TELEGRAM_DEV_MOCK_SECRET;
+
+    const isMockMode = mockSecret === devMockSecret;
+
+    console.log("[Telegram Auth API] Received authentication request", {
+      isMockMode,
+      hasInitData: Boolean(initData),
     });
 
-    if (!initData) {
-      console.error("[Telegram Auth API] No init data provided in request");
+    if (mockSecret && process.env.NODE_ENV === "production") {
       return NextResponse.json(
-        { error: "Init data is required" },
+        { error: "Mock authentication is disabled in production" },
+        { status: 403 }
+      );
+    }
+
+    if (mockSecret && !devMockSecret) {
+      return NextResponse.json(
+        { error: "Mock secret is not configured on the server" },
         { status: 400 }
       );
     }
 
-    // Log init data structure (without sensitive data)
-    console.log("[Telegram Auth API] Init data length:", initData.length);
-    console.log(
-      "[Telegram Auth API] Init data preview:",
-      initData.substring(0, 100) + "..."
-    );
-
-    // Validate the init data from Telegram
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!botToken) {
-      console.error(
-        "[Telegram Auth API] TELEGRAM_BOT_TOKEN is not set in environment"
-      );
+    if (mockSecret && !isMockMode) {
       return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
-    }
-
-    console.log(
-      "[Telegram Auth API] Bot token configured, validating init data..."
-    );
-
-    // Validate init data
-    try {
-      validate(initData, botToken, {
-        expiresIn: 86400, // 1 day
-      });
-      console.log("[Telegram Auth API] Init data validation successful");
-    } catch (error) {
-      console.error("[Telegram Auth API] Init data validation failed:", error);
-      console.error("[Telegram Auth API] Validation error details:", {
-        errorMessage: error instanceof Error ? error.message : String(error),
-        initDataSample: initData.substring(0, 50),
-      });
-      return NextResponse.json(
-        { error: "Invalid or expired init data" },
+        { error: "Invalid mock secret" },
         { status: 401 }
       );
     }
 
-    // Parse the init data
-    console.log("[Telegram Auth API] Parsing init data...");
-    const parsedData = parse(initData);
-    console.log(
-      "[Telegram Auth API] Parsed data keys:",
-      Object.keys(parsedData)
-    );
+    const requestMetadata = metadata ?? {};
+    console.log("[Telegram Auth API] Request metadata:", {
+      hasInitData: Boolean(initData),
+      hasMetadata: Object.keys(requestMetadata).length > 0,
+      metadataKeys: Object.keys(requestMetadata),
+      isMockMode,
+    });
 
-    const user = parsedData.user as TelegramAuthUser | undefined;
+    let telegramUser: TelegramAuthUser | undefined;
+    let requestedTier: string | undefined;
+    let resolvedChatId: number;
 
-    if (!user) {
-      console.error(
-        "[Telegram Auth API] No user data found in parsed init data"
+    if (isMockMode) {
+      const rawId = mockUser?.id ?? 999_000_000;
+      const telegramId =
+        typeof rawId === "number" ? rawId : Number.parseInt(String(rawId), 10);
+
+      if (!Number.isFinite(telegramId)) {
+        return NextResponse.json(
+          { error: "Invalid mock user id" },
+          { status: 400 }
+        );
+      }
+
+      const rawChatId = mockUser?.chat_id ?? mockUser?.chatId ?? telegramId;
+      const chatId =
+        typeof rawChatId === "number"
+          ? rawChatId
+          : Number.parseInt(String(rawChatId), 10);
+
+      if (!Number.isFinite(chatId)) {
+        return NextResponse.json(
+          { error: "Invalid mock chat id" },
+          { status: 400 }
+        );
+      }
+
+      telegramUser = {
+        id: telegramId,
+        first_name: mockUser?.first_name ?? "Dev",
+        last_name: mockUser?.last_name,
+        username: mockUser?.username ?? "dev_user",
+        is_premium: Boolean(mockUser?.is_premium),
+      };
+
+      const tierCandidate =
+        typeof mockUser?.tier === "string"
+          ? mockUser.tier.toLowerCase()
+          : undefined;
+      if (tierCandidate && ["free", "paid", "admin"].includes(tierCandidate)) {
+        requestedTier = tierCandidate;
+      }
+
+      resolvedChatId = chatId;
+
+      console.log("[Telegram Auth API] Mock authentication enabled", {
+        telegramId,
+        chatId,
+        requestedTier,
+        username: telegramUser.username,
+      });
+    } else {
+      if (!initData) {
+        console.error("[Telegram Auth API] No init data provided in request");
+        return NextResponse.json(
+          { error: "Init data is required" },
+          { status: 400 }
+        );
+      }
+
+      console.log("[Telegram Auth API] Init data length:", initData.length);
+      console.log(
+        "[Telegram Auth API] Init data preview:",
+        initData.substring(0, 100) + "..."
       );
+
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+      if (!botToken) {
+        console.error(
+          "[Telegram Auth API] TELEGRAM_BOT_TOKEN is not set in environment"
+        );
+        return NextResponse.json(
+          { error: "Server configuration error" },
+          { status: 500 }
+        );
+      }
+
+      console.log(
+        "[Telegram Auth API] Bot token configured, validating init data..."
+      );
+
+      try {
+        validate(initData, botToken, {
+          expiresIn: 86400, // 1 day
+        });
+        console.log("[Telegram Auth API] Init data validation successful");
+      } catch (error) {
+        console.error(
+          "[Telegram Auth API] Init data validation failed:",
+          error
+        );
+        console.error("[Telegram Auth API] Validation error details:", {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          initDataSample: initData.substring(0, 50),
+        });
+        return NextResponse.json(
+          { error: "Invalid or expired init data" },
+          { status: 401 }
+        );
+      }
+
+      console.log("[Telegram Auth API] Parsing init data...");
+      const parsedData = parse(initData);
+      console.log(
+        "[Telegram Auth API] Parsed data keys:",
+        Object.keys(parsedData)
+      );
+
+      telegramUser = parsedData.user as TelegramAuthUser | undefined;
+
+      if (!telegramUser) {
+        console.error(
+          "[Telegram Auth API] No user data found in parsed init data"
+        );
+        return NextResponse.json(
+          { error: "User data not found" },
+          { status: 400 }
+        );
+      }
+
+      resolvedChatId = telegramUser.id;
+
+      console.log("[Telegram Auth API] User data extracted:", {
+        id: telegramUser.id,
+        username: telegramUser.username,
+        firstName: telegramUser.first_name,
+        isPremium: telegramUser.is_premium,
+      });
+    }
+
+    if (!telegramUser) {
+      console.error("[Telegram Auth API] Failed to resolve Telegram user data");
       return NextResponse.json(
-        { error: "User data not found" },
+        { error: "Unable to resolve Telegram user" },
         { status: 400 }
       );
     }
 
-    console.log("[Telegram Auth API] User data extracted:", {
-      id: user.id,
-      username: user.username,
-      firstName: user.first_name,
-      isPremium: user.is_premium,
-    });
-
-    // Create or update user in MongoDB
     console.log("[Telegram Auth API] Connecting to MongoDB...");
     const client = await getMongoClient();
     const usersCollection = client.db().collection("users");
 
     console.log(
       "[Telegram Auth API] Looking up user with Telegram ID:",
-      user.id
+      telegramUser.id
     );
     const existingUser = await usersCollection.findOne({
-      telegramId: user.id,
+      telegramId: telegramUser.id,
     });
 
     let userId: string;
-    let isAdmin = false;
+    let userTier: string;
 
     if (existingUser) {
-      console.log("[Telegram Auth API] Existing user found:", {
-        userId: existingUser._id.toString(),
-        tier: existingUser.tier,
-      });
       userId = existingUser._id.toString();
-      isAdmin = existingUser.tier === "admin";
+      userTier = existingUser.tier ?? "free";
 
-      // Update last login
+      console.log("[Telegram Auth API] Existing user found:", {
+        userId,
+        tier: userTier,
+      });
+
+      if (requestedTier && requestedTier !== userTier) {
+        await usersCollection.updateOne(
+          { _id: existingUser._id },
+          { $set: { tier: requestedTier } }
+        );
+        userTier = requestedTier;
+        console.log("[Telegram Auth API] Updated user tier:", {
+          userId,
+          userTier,
+        });
+      }
+
       await usersCollection.updateOne(
         { _id: existingUser._id },
         {
           $set: {
             lastLogin: new Date(),
-            name: user.first_name
-              ? `${user.first_name} ${user.last_name || ""}`.trim()
-              : user.username,
+            name: telegramUser.first_name
+              ? `${telegramUser.first_name} ${
+                  telegramUser.last_name || ""
+                }`.trim()
+              : telegramUser.username,
           },
         }
       );
     } else {
-      console.log(
-        "[Telegram Auth API] No existing user found, creating new user..."
-      );
-      // Create new user
+      const tierToUse = requestedTier ?? "free";
       const newUser = {
-        telegramId: user.id,
-        name: user.first_name
-          ? `${user.first_name} ${user.last_name || ""}`.trim()
-          : user.username,
-        username: user.username,
-        tier: "free",
+        telegramId: telegramUser.id,
+        name: telegramUser.first_name
+          ? `${telegramUser.first_name} ${telegramUser.last_name || ""}`.trim()
+          : telegramUser.username,
+        username: telegramUser.username,
+        tier: tierToUse,
         createdAt: new Date(),
         lastLogin: new Date(),
       };
@@ -163,44 +283,46 @@ export async function POST(req: NextRequest) {
         telegramId: newUser.telegramId,
         name: newUser.name,
         username: newUser.username,
+        tier: newUser.tier,
       });
 
       const result = await usersCollection.insertOne(newUser);
       userId = result.insertedId.toString();
+      userTier = tierToUse;
+
       console.log("[Telegram Auth API] New user created with ID:", userId);
     }
 
-    // Store Telegram user data
     await upsertTelegramUser({
-      telegramId: user.id,
-      userId,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      username: user.username,
-      chatId: user.id,
-      isActive: true,
+      telegramId: telegramUser.id,
+      id: userId,
+      email: telegramUser.username,
+      telegramChatId: resolvedChatId,
+      name: telegramUser.first_name || telegramUser.username || "User",
+      tier: userTier as UserTier,
+      lastLogin: new Date(),
     });
 
-    // Generate JWT token
     const token = await new SignJWT({
       sub: userId,
-      telegramId: user.id,
-      name: user.first_name || user.username || "User",
-      tier: isAdmin ? "admin" : "free",
+      telegramId: telegramUser.id,
+      name: telegramUser.first_name || telegramUser.username || "User",
+      tier: userTier,
     })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("7d")
-      .sign(JWT_SECRET);
+      .sign(env.JWT_SECRET);
 
-    // Set cookie
     const response = NextResponse.json({
       success: true,
       user: {
         id: userId,
-        telegramId: user.id,
-        name: user.first_name || user.username || "User",
-        tier: isAdmin ? "admin" : "free",
+        telegramId: telegramUser.id,
+        name: telegramUser.first_name || telegramUser.username || "User",
+        tier: userTier,
+        isAdmin: userTier === "admin",
+        mock: isMockMode,
       },
       token,
     });
@@ -212,7 +334,11 @@ export async function POST(req: NextRequest) {
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
 
-    console.log("[Telegram Auth API] Authentication completed successfully");
+    console.log("[Telegram Auth API] Authentication completed successfully", {
+      isMockMode,
+      userId,
+      tier: userTier,
+    });
 
     return response;
   } catch (error) {
@@ -250,7 +376,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { jwtVerify } = await import("jose");
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, env.JWT_SECRET);
 
     return NextResponse.json({
       authenticated: true,

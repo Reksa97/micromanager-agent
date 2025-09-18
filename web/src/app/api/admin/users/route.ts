@@ -3,10 +3,7 @@ import { jwtVerify } from "jose";
 import { getMongoClient } from "@/lib/db";
 import { auth } from "@/auth";
 import { ObjectId } from "mongodb";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET || "telegram-mini-app-secret"
-);
+import { env } from "@/env";
 
 async function checkSystemAdmin(req: NextRequest) {
   // Check both session auth and JWT token
@@ -29,7 +26,7 @@ async function checkSystemAdmin(req: NextRequest) {
 
   if (token) {
     try {
-      const { payload } = await jwtVerify(token, JWT_SECRET);
+      const { payload } = await jwtVerify(token, env.JWT_SECRET);
       const client = await getMongoClient();
       const user = await client
         .db()

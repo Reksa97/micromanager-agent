@@ -3,10 +3,7 @@ import { jwtVerify } from "jose";
 import { getMongoClient } from "@/lib/db";
 import { type UserProfile, type UserTier } from "@/types/user";
 import { ObjectId } from "mongodb";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET || "telegram-mini-app-secret"
-);
+import { env } from "@/env";
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,7 +19,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Verify token
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, env.JWT_SECRET);
     const userId = payload.sub as string;
 
     // Get user from database
@@ -76,7 +73,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Verify token
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, env.JWT_SECRET);
 
     if (payload.tier !== "admin") {
       return NextResponse.json(

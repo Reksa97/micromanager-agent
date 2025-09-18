@@ -1,43 +1,37 @@
 import { Bot, webhookCallback } from "grammy";
 import { getMongoClient } from "@/lib/db";
+import { UserProfile } from "@/types/user";
 
 type SendMessageOptions = Parameters<Bot["api"]["sendMessage"]>[2];
 
-export interface TelegramUser {
-  _id?: string;
-  telegramId: number;
-  userId?: string;
-  username?: string;
-  firstName?: string;
-  lastName?: string;
-  chatId: number;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const TELEGRAM_USERS_COLLECTION = "telegram_users";
+const USERS_COLLECTION = "users";
 
 async function telegramUsersCollection() {
   const client = await getMongoClient();
-  const col = client.db().collection<TelegramUser>(TELEGRAM_USERS_COLLECTION);
-  await col.createIndex({ telegramId: 1 }, { unique: true });
+  const col = client.db().collection<UserProfile>(USERS_COLLECTION);
+  await col.createIndex({ telegramId: 1 });
   await col.createIndex({ userId: 1 });
-  await col.createIndex({ chatId: 1 });
+  await col.createIndex({ telegramChatId: 1 });
   return col;
 }
 
-export async function getTelegramUserByUserId(userId: string): Promise<TelegramUser | null> {
+export async function getTelegramUserByUserId(
+  userId: string
+): Promise<UserProfile | null> {
   const col = await telegramUsersCollection();
   return await col.findOne({ userId });
 }
 
-export async function getTelegramUserByTelegramId(telegramId: number): Promise<TelegramUser | null> {
+export async function getTelegramUserByTelegramId(
+  telegramId: number
+): Promise<UserProfile | null> {
   const col = await telegramUsersCollection();
   return await col.findOne({ telegramId });
 }
 
-export async function upsertTelegramUser(telegramUser: Omit<TelegramUser, "_id" | "createdAt" | "updatedAt">): Promise<void> {
+export async function upsertTelegramUser(
+  telegramUser: Omit<UserProfile, "_id" | "createdAt" | "updatedAt">
+): Promise<void> {
   const col = await telegramUsersCollection();
   const now = new Date();
 
@@ -56,7 +50,10 @@ export async function upsertTelegramUser(telegramUser: Omit<TelegramUser, "_id" 
   );
 }
 
-export async function linkTelegramUserToAccount(telegramId: number, userId: string): Promise<void> {
+export async function linkTelegramUserToAccount(
+  telegramId: number,
+  userId: string
+): Promise<void> {
   const col = await telegramUsersCollection();
   await col.updateOne(
     { telegramId },
@@ -98,7 +95,7 @@ export function getBot(): Bot {
 export async function sendTelegramMessage(
   chatId: number | string,
   text: string,
-  options?: SendMessageOptions,
+  options?: SendMessageOptions
 ) {
   try {
     const bot = getBot();
@@ -115,13 +112,13 @@ export async function sendTelegramMessage(
 
 export async function notifyTelegramUser(userId: string, message: string) {
   try {
-    const telegramUser = await getTelegramUserByUserId(userId);
-    if (!telegramUser || !telegramUser.chatId) {
+    const user = await getTelegramUserByUserId(userId);
+    if (!user || !user.telegramChatId) {
       console.log(`No active Telegram user found for userId: ${userId}`);
       return { success: false, error: "No Telegram user linked" };
     }
 
-    const success = await sendTelegramMessage(telegramUser.chatId, message);
+    const success = await sendTelegramMessage(user.telegramChatId, message);
     if (!success) {
       return { success: false, error: "Failed to send message" };
     }

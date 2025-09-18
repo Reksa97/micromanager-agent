@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Send, Loader2, AlertCircle, Phone, PhoneOff, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,16 +18,15 @@ import { TIER_PERMISSIONS, type UserProfile } from "@/types/user";
 import { useRealtimeAgent } from "@/features/chat/hooks/use-realtime-agent";
 import type { ChatMessage } from "@/features/chat/types";
 
-interface TelegramChatPanelEnhancedProps {
+interface TelegramChatPanelProps {
   userId: string;
-  isAdmin: boolean;
   userName: string;
 }
 
-export function TelegramChatPanelEnhanced({
+export function TelegramChatPanel({
   userId,
   userName,
-}: TelegramChatPanelEnhancedProps) {
+}: TelegramChatPanelProps) {
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -55,21 +61,29 @@ export function TelegramChatPanelEnhanced({
             type,
             createdAt: createdDate,
             updatedAt: createdDate,
-            source: message.role === "assistant" || message.role === "tool" ? "realtime-agent" : "telegram-user",
+            source:
+              message.role === "assistant" || message.role === "tool"
+                ? "realtime-agent"
+                : "telegram-user",
           } satisfies StoredMessage;
         });
 
-        const deduped = mapped.filter((msg) => !msg.id || !existingIds.has(msg.id));
+        const deduped = mapped.filter(
+          (msg) => !msg.id || !existingIds.has(msg.id)
+        );
         if (deduped.length === 0) {
           return prev;
         }
 
         const next = [...prev, ...deduped];
-        next.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        next.sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
         return next;
       });
     },
-    [userId],
+    [userId]
   );
 
   const realtime = useRealtimeAgent({
@@ -78,6 +92,7 @@ export function TelegramChatPanelEnhanced({
       console.error("Realtime agent error:", voiceError);
       setError(voiceError.message);
     },
+    getAuthToken: () => localStorage.getItem("telegram-token"),
   });
 
   const voiceStateLabel = useMemo(() => {
@@ -179,7 +194,10 @@ export function TelegramChatPanelEnhanced({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: userMessage.content }),
+        body: JSON.stringify({
+          message: userMessage.content,
+          userId,
+        }),
       });
 
       if (!response.ok) {
@@ -248,7 +266,8 @@ export function TelegramChatPanelEnhanced({
         await realtime.startSession();
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to toggle voice session";
+      const message =
+        err instanceof Error ? err.message : "Failed to toggle voice session";
       setError(message);
     }
   };
@@ -297,14 +316,23 @@ export function TelegramChatPanelEnhanced({
         </div>
         {TIER_PERMISSIONS[profile?.tier ?? "free"].hasVoiceAccess && (
           <div className="text-xs text-muted-foreground flex items-center gap-2">
-            <span className={cn("font-medium", isVoiceActive ? "text-foreground" : undefined)}>
+            <span
+              className={cn(
+                "font-medium",
+                isVoiceActive ? "text-foreground" : undefined
+              )}
+            >
               Voice agent: {voiceStateLabel}
             </span>
             {realtime.voiceSignals.transcript && (
-              <span className="truncate">User: {realtime.voiceSignals.transcript}</span>
+              <span className="truncate">
+                User: {realtime.voiceSignals.transcript}
+              </span>
             )}
             {realtime.voiceSignals.agentSpeech && (
-              <span className="truncate">Assistant: {realtime.voiceSignals.agentSpeech}</span>
+              <span className="truncate">
+                Assistant: {realtime.voiceSignals.agentSpeech}
+              </span>
             )}
           </div>
         )}

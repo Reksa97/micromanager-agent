@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { miniApp, themeParams, viewport } from "@telegram-apps/sdk-react";
-import { TelegramChatPanelEnhanced } from "@/features/telegram/components/telegram-chat-panel";
+import { TelegramChatPanel } from "@/features/telegram/components/telegram-chat-panel";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 
@@ -17,9 +17,23 @@ export function TelegramMiniAppAuthenticated() {
   useEffect(() => {
     const initApp = async () => {
       try {
-        // Setup Mini App
-        miniApp.ready();
-        viewport.expand();
+        const isTelegramEnv =
+          typeof window !== "undefined" &&
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Boolean((window as any).Telegram?.WebApp);
+
+        if (isTelegramEnv) {
+          try {
+            miniApp.ready();
+          } catch (error) {
+            console.debug("[Telegram Mini App] miniApp.ready unavailable", error);
+          }
+          try {
+            viewport.expand();
+          } catch (error) {
+            console.debug("[Telegram Mini App] viewport.expand unavailable", error);
+          }
+        }
 
         // Apply theme
         const theme = themeParams.state();
@@ -43,7 +57,12 @@ export function TelegramMiniAppAuthenticated() {
           if (response.ok) {
             const data = await response.json();
             if (data.authenticated) {
-              setUser(data.user);
+              const profile = data.user;
+              setUser({
+                id: profile.id,
+                name: profile.name,
+                role: profile.tier === "admin" ? "admin" : "user",
+              });
             }
           }
         }
@@ -87,7 +106,7 @@ export function TelegramMiniAppAuthenticated() {
               </Badge>
             )}
             <span className="text-sm text-muted-foreground">
-              {user?.name || "User"}
+              {user?.name ?? "User"}
             </span>
           </div>
         </div>
@@ -95,10 +114,9 @@ export function TelegramMiniAppAuthenticated() {
 
       {/* Chat interface */}
       <div className="flex-1 overflow-hidden">
-        <TelegramChatPanelEnhanced
-          userId={user?.id || ""}
-          isAdmin={user?.role === "admin"}
-          userName={user?.name || "User"}
+        <TelegramChatPanel
+          userId={user?.id ?? ""}
+          userName={user?.name ?? "User"}
         />
       </div>
     </main>

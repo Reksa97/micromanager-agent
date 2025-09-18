@@ -51,6 +51,7 @@ interface TelegramMetadata {
   bottomBarColor?: string;
   isClosingConfirmationEnabled?: boolean;
   isVerticalSwipesEnabled?: boolean;
+  mock?: boolean;
 }
 
 export default function TelegramLoginPage() {
@@ -65,6 +66,89 @@ export default function TelegramLoginPage() {
   useEffect(() => {
     const authenticateWithTelegram = async () => {
       console.log("[Telegram Login] Starting authentication process");
+
+      const searchParams = new URLSearchParams(window.location.search);
+      const mockSecretParam =
+        searchParams.get("mock_secret") ?? searchParams.get("mockSecret");
+      const mockUserIdParam =
+        searchParams.get("mock_user_id") ?? searchParams.get("mockUserId");
+      const isMockMode = Boolean(mockSecretParam);
+
+      const parseOptionalNumber = (value: string | null | undefined) => {
+        if (!value) return undefined;
+        const parsed = Number(value);
+        return Number.isNaN(parsed) ? undefined : parsed;
+      };
+
+      if (isMockMode) {
+        console.log(
+          "[Telegram Login] Mock mode enabled via query parameters"
+        );
+
+        const parsedId = parseOptionalNumber(mockUserIdParam) ?? 999001;
+        if (!Number.isFinite(parsedId)) {
+          setErrorMessage(
+            "Invalid mock user id supplied in query string."
+          );
+          setStatus("error");
+          return;
+        }
+
+        const mockMetadata: TelegramMetadata = {
+          mock: true,
+          user: {
+            id: parsedId,
+            first_name: "Mock",
+            username: `mock_${parsedId}`,
+          },
+        };
+
+        setMetadata(mockMetadata);
+        setStatus("authenticating");
+
+        try {
+          const response = await fetch("/api/auth/telegram", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mockSecret: mockSecretParam,
+              mockUser: {
+                id: parsedId,
+                first_name: "Mock",
+                username: `mock_${parsedId}`,
+                tier: "paid",
+              },
+              metadata: mockMetadata,
+            }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => null);
+            throw new Error(
+              (data as { error?: string } | null)?.error ??
+                "Mock authentication failed"
+            );
+          }
+
+          const result = await response.json();
+          if (result?.token) {
+            localStorage.setItem("telegram-token", result.token);
+          }
+
+          setStatus("success");
+          setTimeout(() => {
+            router.push("/telegram-app");
+          }, 800);
+        } catch (error) {
+          console.error("[Telegram Login] Mock authentication error:", error);
+          setErrorMessage(
+            error instanceof Error ? error.message : "Mock authentication failed"
+          );
+          setStatus("error");
+        }
+
+        return;
+      }
 
       try {
         // Log current environment

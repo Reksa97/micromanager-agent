@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { OpenAI } from "openai";
 import { insertMessage, getRecentMessages } from "@/lib/conversations";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET || "telegram-mini-app-secret"
-);
+import { env } from "@/env";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -20,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      await jwtVerify(token, JWT_SECRET);
+      await jwtVerify(token, env.JWT_SECRET);
     } catch {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
@@ -52,9 +49,10 @@ export async function POST(req: NextRequest) {
     const messages = [
       {
         role: "system" as const,
-        content: "You are Micromanager, a helpful AI assistant in a Telegram Mini App. Keep responses concise and mobile-friendly. Be direct and helpful.",
+        content:
+          "You are Micromanager, a helpful AI assistant in a Telegram Mini App. Keep responses concise and mobile-friendly. Be direct and helpful.",
       },
-      ...history.map(msg => ({
+      ...history.map((msg) => ({
         role: msg.role as "user" | "assistant" | "system",
         content: msg.content,
       })),
@@ -68,7 +66,9 @@ export async function POST(req: NextRequest) {
       max_tokens: 500,
     });
 
-    const aiResponse = completion.choices[0].message.content || "I couldn't generate a response.";
+    const aiResponse =
+      completion.choices[0].message.content ||
+      "I couldn't generate a response.";
 
     // Store assistant response
     await insertMessage({

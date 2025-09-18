@@ -6,8 +6,10 @@ const serverSchema = z.object({
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
   MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
   AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required"),
+  JWT_SECRET: z.instanceof(Uint8Array),
   OPENAI_PROJECT: z.string().optional(),
   ALLOW_USER_REGISTRATION: z.boolean(),
+  TELEGRAM_DEV_MOCK_SECRET: z.string().optional(),
 });
 
 const resolvedAuthSecret =
@@ -39,6 +41,8 @@ export const env = serverSchema.parse({
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   MONGODB_URI: resolvedMongoUri,
   AUTH_SECRET: resolvedAuthSecret,
+  JWT_SECRET: new TextEncoder().encode(resolvedAuthSecret),
   OPENAI_PROJECT: process.env.OPENAI_PROJECT,
   ALLOW_USER_REGISTRATION: allowUserRegistration,
+  TELEGRAM_DEV_MOCK_SECRET: process.env.TELEGRAM_DEV_MOCK_SECRET,
 });

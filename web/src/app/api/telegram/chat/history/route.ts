@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { getRecentMessages } from "@/lib/conversations";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET || "telegram-mini-app-secret"
-);
+import { env } from "@/env";
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,7 +13,7 @@ export async function GET(req: NextRequest) {
 
     let payload;
     try {
-      const verified = await jwtVerify(token, JWT_SECRET);
+      const verified = await jwtVerify(token, env.JWT_SECRET);
       payload = verified.payload;
     } catch {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
