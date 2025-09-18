@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { miniApp, themeParams, viewport } from "@telegram-apps/sdk-react";
 import { TelegramChatPanel } from "@/features/telegram/components/telegram-chat-panel";
 import { Badge } from "@/components/ui/badge";
+import { BuildInfo } from "@/components/build-info";
 import { Loader2 } from "lucide-react";
 
 export function TelegramMiniAppAuthenticated() {
@@ -109,6 +110,10 @@ export function TelegramMiniAppAuthenticated() {
               {user?.name ?? "User"}
             </span>
           </div>
+        </div>
+        {/* Build info in top corner */}
+        <div className="mt-2">
+          <BuildInfo variant="compact" />
         </div>
       </header>
 

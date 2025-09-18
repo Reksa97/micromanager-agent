@@ -1,138 +1,99 @@
-# Micromanager Agent - Claude Development Guide
+# Micromanager Agent - Development Guide
 
-## Project Overview
+## Critical: Always Test Before Deploying
+```bash
+cd web && npm run build  # MUST pass before pushing
+cd web && npm run lint   # Fix linting errors
+```
 
-A multi-platform AI agent system with web, voice, and Telegram interfaces. Users can interact with AI agents through various channels with unified message storage and cross-platform notifications.
-
-## Tech Stack
-
+## Project Structure
 - **Framework**: Next.js 15.5.3 with App Router
-- **Database**: MongoDB (via DATABASE_URL)
-- **Authentication**: NextAuth.js for web, JWT for Telegram
-- **AI**: OpenAI GPT models (GPT-5, GPT-5 mini and nano)
-- **Realtime**: OpenAI Realtime API for voice
-- **Telegram**: Grammy bot framework, Telegram Mini Apps SDK
-- **UI**: Tailwind CSS, shadcn/ui components
+- **Database**: MongoDB Atlas (use MONGODB_URI, not DATABASE_URL)
+- **Auth**: NextAuth.js (web), JWT (Telegram)
+- **AI**: OpenAI GPT models
+- **Telegram**: Grammy bot, Telegram Mini Apps SDK
 
-## Key Features
+## Essential Commands
+```bash
+npm run dev         # Start dev server (port 3000)
+npm run build       # Build for production (MUST test before push)
+npm run lint        # Run ESLint
+npm run test        # Run tests
+```
 
-1. **Multi-channel Communication**: Web chat, voice calls, Telegram bot/mini app
-2. **Unified Message Storage**: All messages stored in MongoDB with source tags
-3. **Cross-platform Notifications**: Web/voice messages sent to Telegram users
-4. **User Tier System**: Free/Paid/Admin with different permissions
-5. **Usage Tracking**: Token usage, message limits, voice minutes
-6. **System Admin Panel**: Manage users, tiers, and permissions
-
-## Message Source Tags
-
-- `web-user`: Messages from web interface
-- `telegram-user`: Messages from Telegram
-- `micromanager`: AI assistant responses
-- `realtime-agent`: Voice agent responses
+## Environment Variables (Required for Vercel)
+```
+MONGODB_URI=mongodb+srv://...    # MongoDB Atlas connection
+AUTH_SECRET=...                  # Random secret for JWT
+OPENAI_API_KEY=sk-proj-...       # OpenAI API key
+TELEGRAM_BOT_TOKEN=...           # From @BotFather
+TELEGRAM_WEBHOOK_SECRET=...      # Random webhook secret
+ALLOW_USER_REGISTRATION=true     # Enable signups
+```
 
 ## User Management
 
-### User Tiers
+### MongoDB Direct Updates
+```javascript
+// Set user as system admin with paid tier:
+{
+  isSystemAdmin: true,
+  tier: "paid",         // "free" | "paid" | "enterprise"
+  role: "admin"         // "user" | "admin"
+}
+```
 
-- **FREE**: Limited tokens, no voice, GPT-5 nano only
-- **PAID**: More tokens, voice access, multiple models
-- **ADMIN**: Unlimited access, all models
-
-### System Admin Access
-
-Users with `tier: admin` can access `/admin` to:
-
-- View all users
-- Change user tiers
-- Monitor usage
-- Manage permissions
+### Access Points
+- `/admin` - System admin dashboard (requires isSystemAdmin: true)
+- `/telegram` - Telegram Mini App login
+- `/telegram-app` - Authenticated Telegram interface
 
 ## API Endpoints
-
-### Authentication
-
-- `POST /api/auth/register` - Register new user
 - `POST /api/auth/telegram` - Telegram authentication
-- `GET /api/auth/telegram` - Verify Telegram token
+- `GET /api/user/profile` - User profile and usage
+- `POST /api/telegram/chat` - Telegram chat messages
+- `GET /api/admin/users` - Admin: list all users
+- `PATCH /api/admin/users` - Admin: update user
 
-### Chat
+## Common Issues & Solutions
 
-- `POST /api/chat` - Send message (web)
-- `POST /api/telegram/chat` - Send message (Telegram)
-- `GET /api/telegram/chat/history` - Get chat history
+### MongoDB SSL Error on Vercel
+- Error: `SSL routines:ssl3_read_bytes:tlsv1 alert internal error`
+- Solution: Fixed in `/src/lib/db.ts` with proper connection pooling
 
-### User Management
+### Build Failures
+- Always run `npm run build` locally before pushing
+- Check for TypeScript errors and unused imports
+- Verify all imports exist (no untracked files)
 
-- `GET /api/user/profile` - Get user profile and usage
-- `PATCH /api/user/profile` - Update user tier (admin only)
-- `POST /api/user/usage` - Track usage
-- `GET /api/admin/users` - List all users (system admin)
-- `PATCH /api/admin/users` - Update user (system admin)
+## Message Source Tags
+- `web-user` - Web interface messages
+- `telegram-user` - Telegram messages
+- `micromanager` - AI responses
+- `realtime-agent` - Voice agent
 
-### Realtime/Voice
+## Development Workflow
+1. Make changes
+2. Run `npm run build` - MUST PASS
+3. Test locally
+4. Commit with descriptive message
+5. Push to main (auto-deploys to Vercel)
 
-- `POST /api/realtime/session` - Create voice session
+## Telegram Bot Setup
+1. Create bot with @BotFather
+2. Set webhook: `https://your-app.vercel.app/api/telegram/webhook`
+3. Set Mini App URL: `https://your-app.vercel.app/telegram`
 
-## Environment Variables
-
-Required environment variables for local development and Vercel deployment:
-
-```
-MONGODB_URI=mongodb+srv://...    # MongoDB Atlas connection string
-AUTH_SECRET=...                  # Random secret for JWT signing
-OPENAI_API_KEY=sk-proj-...       # OpenAI API key
-TELEGRAM_BOT_TOKEN=...           # Telegram bot token from @BotFather
-TELEGRAM_WEBHOOK_SECRET=...      # Random secret for webhook validation
-ALLOW_USER_REGISTRATION=true     # Allow new user signups
-```
-
-## Vercel Deployment
-
-### Known Issues & Solutions
-
-1. **MongoDB SSL/TLS Connection Error**
-   - Error: `SSL routines:ssl3_read_bytes:tlsv1 alert internal error`
-   - Solution: The MongoDB client has been configured with proper SSL settings and connection pooling for serverless environments
-
-2. **Environment Variables**
-   - All environment variables must be added via Vercel Dashboard → Settings → Environment Variables
-   - Do NOT commit `.env` files to the repository
-
-3. **MongoDB Connection Best Practices**
-   - The app uses a cached connection promise to reuse connections across serverless function invocations
-   - Connection pooling is handled automatically by the MongoDB driver
-   - SSL/TLS is enabled for secure connections to MongoDB Atlas
-
-### Deployment Steps
-
-1. Push code to GitHub
-2. Connect repository to Vercel
-3. Add all required environment variables in Vercel Dashboard
-4. Deploy (automatic on push to main branch)
-5. Set up Telegram webhook: `https://your-app.vercel.app/api/telegram/webhook`
-
-## Testing Commands
-
-```bash
-npm run dev         # Start dev server with HTTPS
-npm run build       # Build for production
-npm run test        # Run all tests
-npm run lint        # Run ESLint
-```
-
-## Important Files
-
-- `/src/app/admin/*` - System admin UI
+## File Locations
+- `/src/app/admin/*` - Admin UI
 - `/src/app/telegram/*` - Telegram Mini App
-- `/src/lib/telegram/bot.ts` - Telegram bot logic
-- `/src/types/user.ts` - User types and permissions
-- `/src/lib/conversations.ts` - Message storage
+- `/src/lib/telegram/bot.ts` - Bot logic
+- `/src/types/user.ts` - User types
+- `/src/lib/db.ts` - MongoDB connection
 
-## Development Notes
-
-- Always check user permissions before allowing actions
-- Track token usage for all AI interactions
-- Telegram Mini App requires HTTPS in development
-- System admin UI is at `/admin` (requires tier admin)
-- Use source tags when storing messages
-- Voice features only available for paid/admin users
+## Testing Checklist
+- [ ] Build passes: `npm run build`
+- [ ] No TypeScript errors
+- [ ] All imports exist
+- [ ] Environment variables set on Vercel
+- [ ] MongoDB connection works

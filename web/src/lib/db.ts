@@ -17,29 +17,20 @@ const options: MongoClientOptions = {
   w: "majority",
 };
 
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
-
 // Global caching for serverless environments
 const globalWithMongo = global as typeof globalThis & {
   _mongoClientPromise?: Promise<MongoClient>;
+  _mongoClient?: MongoClient;
 };
 
-if (process.env.NODE_ENV === "development") {
-  // In development, use a global variable to preserve connection
-  if (!globalWithMongo._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    globalWithMongo._mongoClientPromise = client.connect();
-  }
-  clientPromise = globalWithMongo._mongoClientPromise;
-} else {
-  // In production, cache the promise on global to reuse across invocations
-  if (!globalWithMongo._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    globalWithMongo._mongoClientPromise = client.connect();
-  }
-  clientPromise = globalWithMongo._mongoClientPromise;
+if (!globalWithMongo._mongoClientPromise) {
+  const newClient = new MongoClient(uri, options);
+  globalWithMongo._mongoClient = newClient;
+  globalWithMongo._mongoClientPromise = newClient.connect();
 }
+
+const client = globalWithMongo._mongoClient!;
+const clientPromise = globalWithMongo._mongoClientPromise!;
 
 export default client;
 
@@ -57,8 +48,9 @@ export async function getMongoClient() {
 
     // Try to reconnect once
     try {
-      client = new MongoClient(uri, options);
-      const newClientPromise = client.connect();
+      const reconnectClient = new MongoClient(uri, options);
+      const newClientPromise = reconnectClient.connect();
+      globalWithMongo._mongoClient = reconnectClient;
       globalWithMongo._mongoClientPromise = newClientPromise;
       return await newClientPromise;
     } catch (reconnectError) {
