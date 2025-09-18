@@ -32,6 +32,7 @@
     "@radix-ui/react-tooltip": "1.2.8",
     "@telegram-apps/init-data-node": "2.0.10",
     "@telegram-apps/sdk-react": "3.3.7",
+    "@vercel/speed-insights": "^1.2.0",
     "bcryptjs": "3.0.2",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
