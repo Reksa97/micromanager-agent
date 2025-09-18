@@ -7,17 +7,8 @@ import { ObjectId } from "mongodb";
 import { z } from "zod";
 
 import { env } from "@/env";
-import client from "@/lib/db";
+import clientPromise from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
-
-const clientPromise = (async () => {
-  try {
-    await client.db().command({ ping: 1 });
-  } catch {
-    await client.connect();
-  }
-  return client;
-})();
 
 const credentialsSchema = z.object({
   email: z.string().email().trim(),

@@ -10,52 +10,46 @@ const options: MongoClientOptions = {
     strict: true,
     deprecationErrors: true,
   },
-  // Fix for Vercel deployment SSL issues
-  tls: true,
-  tlsAllowInvalidCertificates: false,
+  // Critical: Disable automatic IP family selection to prevent SSL errors
+  autoSelectFamily: false,
+  // Standard options for MongoDB Atlas
   retryWrites: true,
   w: "majority",
 };
 
-// Global caching for serverless environments
-const globalWithMongo = global as typeof globalThis & {
-  _mongoClientPromise?: Promise<MongoClient>;
-  _mongoClient?: MongoClient;
-};
-
-if (!globalWithMongo._mongoClientPromise) {
-  const newClient = new MongoClient(uri, options);
-  globalWithMongo._mongoClient = newClient;
-  globalWithMongo._mongoClientPromise = newClient.connect();
+// Global caching for serverless environments (Vercel pattern)
+declare global {
+  var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
-const client = globalWithMongo._mongoClient!;
-const clientPromise = globalWithMongo._mongoClientPromise!;
+let client: MongoClient;
+let clientPromise: Promise<MongoClient>;
 
-export default client;
+if (process.env.NODE_ENV === "development") {
+  // In development mode, use a global variable to preserve the value
+  // across module reloads caused by HMR (Hot Module Replacement).
+  if (!global._mongoClientPromise) {
+    client = new MongoClient(uri, options);
+    global._mongoClientPromise = client.connect();
+  }
+  clientPromise = global._mongoClientPromise;
+} else {
+  // In production mode, it's best to not use a global variable.
+  client = new MongoClient(uri, options);
+  clientPromise = client.connect();
+}
+
+// Export a module-scoped MongoClient promise for serverless efficiency
+export default clientPromise;
 
 export async function getMongoClient() {
   try {
-    // Ensure client is connected
-    const connectedClient = await clientPromise;
-
-    // Ping to check connection health
-    await connectedClient.db().command({ ping: 1 });
-
-    return connectedClient;
+    const client = await clientPromise;
+    // Ping to verify connection
+    await client.db("admin").command({ ping: 1 });
+    return client;
   } catch (error) {
     console.error("MongoDB connection error:", error);
-
-    // Try to reconnect once
-    try {
-      const reconnectClient = new MongoClient(uri, options);
-      const newClientPromise = reconnectClient.connect();
-      globalWithMongo._mongoClient = reconnectClient;
-      globalWithMongo._mongoClientPromise = newClientPromise;
-      return await newClientPromise;
-    } catch (reconnectError) {
-      console.error("MongoDB reconnection failed:", reconnectError);
-      throw reconnectError;
-    }
+    throw error;
   }
 }

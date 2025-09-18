@@ -35,24 +35,27 @@ export async function POST(req: NextRequest) {
       metadata?: Record<string, unknown>;
     };
 
+    // Block any mock authentication attempts in production immediately
+    if (process.env.NODE_ENV === "production" && (body.mockSecret || body.mockUser)) {
+      console.error("[Telegram Auth API] Mock authentication attempt blocked in production");
+      return NextResponse.json(
+        { error: "Mock authentication is completely disabled in production" },
+        { status: 403 }
+      );
+    }
+
     const mockSecret =
       typeof body.mockSecret === "string" ? body.mockSecret : undefined;
     const mockUser = (body.mockUser ?? null) as MockTelegramUserPayload | null;
     const devMockSecret = env.TELEGRAM_DEV_MOCK_SECRET;
 
-    const isMockMode = mockSecret === devMockSecret;
+    const isMockMode = mockSecret === devMockSecret && process.env.NODE_ENV !== "production";
 
     console.log("[Telegram Auth API] Received authentication request", {
       isMockMode,
       hasInitData: Boolean(initData),
+      environment: process.env.NODE_ENV,
     });
-
-    if (mockSecret && process.env.NODE_ENV === "production") {
-      return NextResponse.json(
-        { error: "Mock authentication is disabled in production" },
-        { status: 403 }
-      );
-    }
 
     if (mockSecret && !devMockSecret) {
       return NextResponse.json(

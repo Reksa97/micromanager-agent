@@ -74,15 +74,24 @@ export default function TelegramLoginPage() {
         searchParams.get("mock_user_id") ?? searchParams.get("mockUserId");
       const isMockMode = Boolean(mockSecretParam);
 
+      // Block mock mode completely in production
+      if (isMockMode && process.env.NODE_ENV === "production") {
+        console.error("[Telegram Login] Mock mode is not allowed in production");
+        setErrorMessage("Mock authentication is disabled in production");
+        setStatus("error");
+        return;
+      }
+
       const parseOptionalNumber = (value: string | null | undefined) => {
         if (!value) return undefined;
         const parsed = Number(value);
         return Number.isNaN(parsed) ? undefined : parsed;
       };
 
-      if (isMockMode) {
+      // Only allow mock mode in development
+      if (isMockMode && process.env.NODE_ENV === "development") {
         console.log(
-          "[Telegram Login] Mock mode enabled via query parameters"
+          "[Telegram Login] Mock mode enabled via query parameters (DEV ONLY)"
         );
 
         const parsedId = parseOptionalNumber(mockUserIdParam) ?? 999001;
