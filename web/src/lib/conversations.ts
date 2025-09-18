@@ -4,7 +4,11 @@ import { getMongoClient } from "@/lib/db";
 
 export type MessageRole = "user" | "assistant" | "system" | "tool";
 
-export type MessageSource = "telegram-user" | "web-user" | "micromanager" | "realtime-agent";
+export type MessageSource =
+  | "telegram-user"
+  | "web-user"
+  | "micromanager"
+  | "realtime-agent";
 
 export interface StoredMessage {
   _id?: ObjectId;
@@ -16,7 +20,8 @@ export interface StoredMessage {
   updatedAt: Date;
   type: "text" | "tool" | "state" | "audio";
   source?: MessageSource;
-  metadata?: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata?: Record<string, any>;
   telegramChatId?: number | string;
 }
 
@@ -46,8 +51,14 @@ export async function insertMessage(message: StoredMessage) {
     createdAt: message.createdAt ?? new Date(),
     updatedAt: message.updatedAt ?? new Date(),
   };
-  const { insertedId } = await col.insertOne({ ...doc, id: doc.id ?? undefined });
-  await col.updateOne({ _id: insertedId }, { $set: { id: insertedId.toString() } });
+  const { insertedId } = await col.insertOne({
+    ...doc,
+    id: doc.id ?? undefined,
+  });
+  await col.updateOne(
+    { _id: insertedId },
+    { $set: { id: insertedId.toString() } }
+  );
   return insertedId.toString();
 }
 
@@ -65,13 +76,16 @@ export async function insertMessages(messages: StoredMessage[]) {
   const entries = Object.values(insertedIds);
   await Promise.all(
     entries.map((objectId) =>
-      col.updateOne({ _id: objectId }, { $set: { id: objectId.toString() } }),
-    ),
+      col.updateOne({ _id: objectId }, { $set: { id: objectId.toString() } })
+    )
   );
   return entries.map((objectId) => objectId.toString());
 }
 
-export async function updateMessage(id: string, update: Partial<StoredMessage>) {
+export async function updateMessage(
+  id: string,
+  update: Partial<StoredMessage>
+) {
   const col = await collection();
   const next = {
     ...update,

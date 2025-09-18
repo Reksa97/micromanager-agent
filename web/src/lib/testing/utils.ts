@@ -1,59 +1,35 @@
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import { MongoClient } from 'mongodb';
-import type { Session } from 'next-auth';
+import { MongoClient } from "mongodb";
+import { clearMockDatabase, mockMongoClient } from "./db-mock";
+import type { Session } from "next-auth";
 
-let mongoServer: MongoMemoryServer | null = null;
-let mongoClient: MongoClient | null = null;
-
-export async function setupTestDatabase(): Promise<MongoClient> {
-  if (mongoClient) return mongoClient;
-
-  mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri();
-  
-  mongoClient = new MongoClient(uri);
-  await mongoClient.connect();
-  
-  return mongoClient;
+export async function setupTestDatabase() {
+  return mockMongoClient;
 }
 
 export async function teardownTestDatabase(): Promise<void> {
-  if (mongoClient) {
-    await mongoClient.close();
-    mongoClient = null;
-  }
-  
-  if (mongoServer) {
-    await mongoServer.stop();
-    mongoServer = null;
-  }
+  clearMockDatabase();
 }
 
 export async function clearDatabase(): Promise<void> {
-  if (!mongoClient) return;
-  
-  const db = mongoClient.db();
-  const collections = await db.collections();
-  
-  await Promise.all(
-    collections.map(collection => collection.deleteMany({}))
-  );
+  clearMockDatabase();
 }
 
 export function mockAuth(session: Partial<Session> | null = null) {
-  const mockSession: Session | null = session ? {
-    user: {
-      id: 'test-user-id',
-      email: 'test@example.com',
-      name: 'Test User',
-      ...session.user,
-    },
-    expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    ...session,
-  } : null;
+  const mockSession: Session | null = session
+    ? {
+        user: {
+          id: "test-user-id",
+          email: "test@example.com",
+          name: "Test User",
+          ...session.user,
+        },
+        expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        ...session,
+      }
+    : null;
 
   // Mock the auth function
-  jest.mock('@/auth', () => ({
+  jest.mock("@/auth", () => ({
     auth: jest.fn().mockResolvedValue(mockSession),
   }));
 
@@ -62,12 +38,12 @@ export function mockAuth(session: Partial<Session> | null = null) {
 
 export function mockEnvironment(overrides: Record<string, string> = {}) {
   const original = { ...process.env };
-  
+
   Object.assign(process.env, {
-    MONGODB_URI: 'mongodb://localhost:27017/test',
-    NEXTAUTH_SECRET: 'test-secret',
-    NEXTAUTH_URL: 'http://localhost:3000',
-    OPENAI_API_KEY: 'test-key',
+    MONGODB_URI: "mongodb://localhost:27017/test",
+    NEXTAUTH_SECRET: "test-secret",
+    NEXTAUTH_URL: "http://localhost:3000",
+    OPENAI_API_KEY: "test-key",
     ...overrides,
   });
 
@@ -82,15 +58,15 @@ export async function waitForCondition(
   interval: number = 100
 ): Promise<void> {
   const startTime = Date.now();
-  
+
   while (Date.now() - startTime < timeout) {
     if (await condition()) {
       return;
     }
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
-  
-  throw new Error('Condition not met within timeout');
+
+  throw new Error("Condition not met within timeout");
 }
 
 export function captureConsole() {
@@ -99,17 +75,17 @@ export function captureConsole() {
     error: console.error,
     warn: console.warn,
   };
-  
+
   const captured = {
     logs: [] as unknown[][],
     errors: [] as unknown[][],
     warnings: [] as unknown[][],
   };
-  
+
   console.log = (...args) => captured.logs.push(args);
   console.error = (...args) => captured.errors.push(args);
   console.warn = (...args) => captured.warnings.push(args);
-  
+
   return {
     captured,
     restore: () => {
@@ -122,14 +98,14 @@ export function captureConsole() {
 
 export async function measurePerformance<T>(
   fn: () => Promise<T>,
-  label: string = 'Operation'
+  label: string = "Operation"
 ): Promise<{ result: T; duration: number }> {
   const start = performance.now();
   const result = await fn();
   const duration = performance.now() - start;
-  
+
   console.log(`${label} took ${duration.toFixed(2)}ms`);
-  
+
   return { result, duration };
 }
 
@@ -147,12 +123,12 @@ export async function createTestContext(
     env?: Record<string, string>;
   } = {}
 ): Promise<TestContext> {
-  const db = await setupTestDatabase();
-  const session = options.authenticated !== false 
-    ? mockAuth(options.session) 
-    : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = (await setupTestDatabase()) as any;
+  const session =
+    options.authenticated !== false ? mockAuth(options.session) : null;
   const restoreEnv = mockEnvironment(options.env);
-  
+
   return {
     db,
     session,

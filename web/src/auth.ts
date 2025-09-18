@@ -32,7 +32,7 @@ type AdapterUser = {
   image?: string | null;
   name?: string | null;
   password?: string | null;
-  role?: "user" | "admin";
+  tier?: "free" | "paid" | "admin";
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -52,7 +52,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         const parsed = credentialsSchema.safeParse(credentials ?? {});
         if (!parsed.success) {
-          console.warn("[auth][credentials] missing or invalid email/password field");
+          console.warn(
+            "[auth][credentials] missing or invalid email/password field"
+          );
           return null;
         }
 
@@ -71,14 +73,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         if (!user.password) {
-          console.warn("[auth][credentials] user missing password hash", normalizedEmail);
+          console.warn(
+            "[auth][credentials] user missing password hash",
+            normalizedEmail
+          );
           return null;
         }
 
         const isValid = await verifyPassword(normalizedPassword, user.password);
 
         if (!isValid) {
-          console.warn("[auth][credentials] password mismatch", normalizedEmail);
+          console.warn(
+            "[auth][credentials] password mismatch",
+            normalizedEmail
+          );
           return null;
         }
 
@@ -86,7 +94,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: user.id ?? user._id.toString(),
           email: user.email ?? normalizedEmail,
           name: user.name ?? normalizedEmail.split("@")[0],
-          role: user.role ?? "user",
+          tier: user.tier ?? "free",
         } satisfies Partial<User> as User;
       },
     }),
@@ -96,14 +104,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         const typedUser = user as User;
         token.sub = typedUser.id;
-        (token as JWT).role = typedUser.role ?? "user";
+        (token as JWT).tier = typedUser.tier ?? "free";
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
-        session.user.role = (token as JWT).role ?? "user";
+        session.user.tier = (token as JWT).tier ?? "free";
       }
       return session;
     },

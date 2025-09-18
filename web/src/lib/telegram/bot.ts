@@ -65,6 +65,24 @@ export async function linkTelegramUserToAccount(telegramId: number, userId: stri
 }
 
 let botInstance: Bot | null = null;
+let botInitialized = false;
+
+export async function initBot(): Promise<Bot> {
+  if (!botInstance) {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+      throw new Error("TELEGRAM_BOT_TOKEN is not set");
+    }
+    botInstance = new Bot(token);
+  }
+
+  if (!botInitialized) {
+    await botInstance.init();
+    botInitialized = true;
+  }
+
+  return botInstance;
+}
 
 export function getBot(): Bot {
   if (!botInstance) {

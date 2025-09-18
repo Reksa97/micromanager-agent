@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { getBot, upsertTelegramUser, getTelegramUserByTelegramId } from "@/lib/telegram/bot";
+import { Bot } from "grammy";
+import { initBot, upsertTelegramUser, getTelegramUserByTelegramId } from "@/lib/telegram/bot";
 import { insertMessage } from "@/lib/conversations";
 import { OpenAI } from "openai";
 
@@ -7,10 +8,15 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(req: NextRequest) {
-  try {
-    const bot = getBot();
+let bot: Bot | null = null;
+let handlersRegistered = false;
 
+async function setupBot() {
+  if (!bot) {
+    bot = await initBot();
+  }
+
+  if (!handlersRegistered) {
     bot.command("start", async (ctx) => {
       const telegramId = ctx.from?.id;
       const firstName = ctx.from?.first_name || "";
@@ -122,6 +128,15 @@ export async function POST(req: NextRequest) {
       }
     });
 
+    handlersRegistered = true;
+  }
+
+  return bot;
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const bot = await setupBot();
     const body = await req.json();
     await bot.handleUpdate(body);
 

@@ -24,6 +24,7 @@ module.exports = {
   coveragePathIgnorePatterns: [
     '/node_modules/',
     '/.next/',
+    '/.next-dev/',
     '/coverage/',
   ],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],

@@ -47,23 +47,38 @@ type StreamResult =
 
 function toChatMessages(history: StoredMessage[]): ChatCompletionMessageParam[] {
   const messages: ChatCompletionMessageParam[] = [];
+  const toolResponseIds = new Set<string>();
+
+  for (const entry of history) {
+    if (entry.role !== "tool") continue;
+    const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
+    const toolCallId = typeof metadata.toolCallId === "string" ? metadata.toolCallId : undefined;
+    if (toolCallId) {
+      toolResponseIds.add(toolCallId);
+    }
+  }
+
+  const pendingToolCalls = new Set<string>();
 
   for (const entry of history) {
     const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
 
     if (entry.role === "tool") {
       const toolCallId = typeof metadata.toolCallId === "string" ? metadata.toolCallId : undefined;
-      if (!toolCallId) continue;
+      if (!toolCallId || !pendingToolCalls.has(toolCallId)) {
+        continue;
+      }
       messages.push({
         role: "tool",
         content: entry.content,
         tool_call_id: toolCallId,
       });
+      pendingToolCalls.delete(toolCallId);
       continue;
     }
 
     if (entry.role === "assistant" && Array.isArray(metadata.toolCalls)) {
-      const toolCalls = (metadata.toolCalls as unknown[]).flatMap((item) => {
+      const aggregatedToolCalls = (metadata.toolCalls as unknown[]).flatMap((item) => {
         if (!item || typeof item !== "object") return [];
         const tc = item as { id?: unknown; name?: unknown; arguments?: unknown };
         if (typeof tc.id !== "string" || typeof tc.name !== "string" || typeof tc.arguments !== "string") {
@@ -72,21 +87,30 @@ function toChatMessages(history: StoredMessage[]): ChatCompletionMessageParam[] 
         return [
           {
             id: tc.id,
-            type: "function" as const,
-            function: {
-              name: tc.name,
-              arguments: tc.arguments,
-            },
+            name: tc.name,
+            arguments: tc.arguments,
           },
         ];
       });
 
-      messages.push({
-        role: "assistant",
-        content: entry.content ?? "",
-        tool_calls: toolCalls,
-      });
-      continue;
+      const executableToolCalls = aggregatedToolCalls.filter((call) => toolResponseIds.has(call.id));
+
+      if (executableToolCalls.length > 0) {
+        messages.push({
+          role: "assistant",
+          content: entry.content ?? "",
+          tool_calls: executableToolCalls.map<ChatCompletionMessageToolCall>((call) => ({
+            id: call.id,
+            type: "function",
+            function: {
+              name: call.name,
+              arguments: call.arguments,
+            },
+          })),
+        });
+        executableToolCalls.forEach((call) => pendingToolCalls.add(call.id));
+        continue;
+      }
     }
 
     if (entry.role === "assistant" || entry.role === "user" || entry.role === "system") {

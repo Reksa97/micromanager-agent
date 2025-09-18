@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     emailVerified: null,
     name,
     password: hashedPassword,
-    role: "user",
+    tier: "free",
     image: null,
     createdAt: now,
     updatedAt: now,
