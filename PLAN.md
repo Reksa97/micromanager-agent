@@ -8,6 +8,174 @@
 - Tool integration in realtime agent
 - Context API endpoint
 
+---
+
+# Async Audio + AI-Generated UI Stack Plan
+
+## Core Architecture
+- **TypeScript + Next.js 14 with App Router**
+- **AI → UI Flow**: AI generates JSON instructions → React renderer interprets → DOM updates
+- **Audio Pipeline**: Browser Speech API (input) → AI processing → Browser TTS or Cartesia (output)
+
+## 1. AI-to-DOM Communication Format
+
+**JSON Schema**: Compact object describing UI elements (~200-500 bytes)
+- **Structure**: `{type, style, content, children, actions}`
+- **Safety**: No raw HTML, no eval, just data
+- **Editability**: AI can modify previous instructions by ID reference
+
+## 2. Dynamic Renderer Component
+
+- **Input**: JSON instructions from AI
+- **Output**: React elements with motion animations
+- **Component mapping**: type string → React component
+- **Action handling**: Maps UI events back to AI system
+- **State preservation**: Maintains UI between updates
+
+## 3. Audio Processing Pipeline
+
+### Input (3 options):
+- Web Speech API (immediate, browser-based)
+- MediaRecorder → Whisper API (higher accuracy)
+- Continuous streaming (WebRTC)
+
+### Output (progressive enhancement):
+- **Start**: Browser speechSynthesis
+- **Better**: OpenAI TTS ($0.015/1k chars)
+- **Best**: Cartesia (95ms latency) or ElevenLabs
+
+## 4. AI Instruction Generation
+
+### System Prompt Engineering:
+- Define allowed UI components
+- Set style constraints (flexbox-first)
+- Establish action naming conventions
+- Include size budget (500 bytes max)
+
+### Response Structure:
+- Parallel tracks: UI generation + text response
+- Function calling for structured output
+- Streaming text with deferred UI updates
+
+## 5. State Management
+
+### UI Learning Store:
+- User interaction patterns
+- Successful UI configurations
+- Response time metrics
+- Component preference scoring
+
+### Session State:
+- Current UI instruction set
+- Audio queue management
+- Pending actions buffer
+- Message history with UI snapshots
+
+## 6. Safety & Validation
+
+### Input Sanitization:
+- JSON schema validation (Zod)
+- Style property allowlist
+- Action name validation
+- Size limits enforcement
+
+### Rendering Constraints:
+- No dynamic imports
+- No innerHTML
+- Sandboxed event handlers
+- Component whitelist
+
+## 7. Optimization Points
+
+### Performance:
+- Memoize rendered components
+- Debounce UI updates
+- Preload audio chunks
+- Cache common UI patterns
+
+### Bundle Size:
+- Dynamic import for audio libs
+- Tree-shake UI components
+- Compress instruction history
+- CDN for voice models
+
+## 8. Development Phases
+
+### Phase 1: Core Loop
+- JSON → React renderer
+- Basic component set (div, button, text, input)
+- Browser TTS only
+- Simple action handling
+
+### Phase 2: Audio Enhancement
+- Add Cartesia/OpenAI TTS
+- Implement speech input
+- Audio queue management
+- Volume/rate controls
+
+### Phase 3: Intelligence Layer
+- UI preference learning
+- A/B testing framework
+- Pattern recognition
+- Adaptive complexity
+
+## 9. File Structure
+
+```
+/components/ai-renderer/
+  - types.ts (UI instruction interfaces)
+  - renderer.tsx (main component)
+  - validators.ts (schema validation)
+
+/lib/audio/
+  - manager.ts (queue & playback)
+  - providers/ (tts implementations)
+
+/lib/ai/
+  - ui-generator.ts (prompts & parsing)
+  - learning.ts (preference tracking)
+```
+
+## 10. Key Decisions
+
+### Decided:
+- **Max UI instruction size**: 500 bytes
+- **Allowed CSS properties**: Use styled shadcn defaults, abstract them with short descriptive words
+- **Audio provider priority**: Lowest priority right now, but integrating with browser realtime agent session needed quickly
+- **State persistence layer**: The user context MongoDB object - store JSON as object to allow all MongoDB features
+- **Error recovery strategy**: Never render broken UI, always store previous state for revert on errors
+
+### For Further Discussion:
+
+**How does AI reference previous UI elements?**
+- Option A: Assign IDs to all elements, reference by ID
+- Option B: Use path-based references (e.g., "button in header")
+- Option C: Semantic references (e.g., "the submit button")
+
+**Should UI updates be diffed or replaced?**
+- Option A: Full replacement (simpler, less state)
+- Option B: Diff and patch (more efficient, complex)
+- Option C: Hybrid - replace sections, diff within
+
+**Can users override AI styling?**
+- Option A: No overrides, AI maintains full control
+- Option B: User preferences stored and respected
+- Option C: Theme system with AI working within constraints
+
+**How to handle audio interruptions?**
+- Option A: Queue all audio, play sequentially
+- Option B: Cancel previous on new audio
+- Option C: Priority system with interruption rules
+
+**What metrics to track for learning?**
+- Interaction success rate (did user achieve goal?)
+- Time to completion for tasks
+- UI elements most interacted with
+- Abandoned flows and their patterns
+- User corrections and preference signals
+
+---
+
 ## Build Order
 
 ### Phase 1: Extend Tool System

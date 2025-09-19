@@ -44,7 +44,11 @@ export function ChatPanel({}: ChatPanelProps) {
   const assistantResponseText = realtime.voiceSignals.assistantResponse?.trim();
   const assistantOutput = assistantStreamingText || assistantResponseText;
   const reasoningText = realtime.voiceSignals.actionSummary?.trim();
-  const assistantBadge = assistantStreamingText ? "Streaming" : assistantResponseText ? "Completed" : undefined;
+  const assistantBadge = assistantStreamingText
+    ? "Streaming"
+    : assistantResponseText
+    ? "Completed"
+    : undefined;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -63,13 +67,21 @@ export function ChatPanel({}: ChatPanelProps) {
       <Card className="glass border border-border/70">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle className="text-2xl font-semibold">Operations Agent</CardTitle>
+            <CardTitle className="text-2xl font-semibold">
+              Operations Agent
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Coordinate tasks, surface blockers, and capture next steps in real time.
+              Coordinate tasks, surface blockers, and capture next steps in real
+              time.
             </p>
           </div>
           {isStreaming && (
-            <Button variant="outline" size="sm" onClick={handleCancel} className="gap-2 text-destructive">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCancel}
+              className="gap-2 text-destructive"
+            >
               <Square className="h-4 w-4" />
               Stop streaming
             </Button>
@@ -80,12 +92,18 @@ export function ChatPanel({}: ChatPanelProps) {
             <div className="flex flex-col gap-4 pb-6">
               {isLoadingHistory ? (
                 <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading history…
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading
+                  history…
                 </div>
               ) : sortedMessages.length === 0 ? (
                 <div className="mx-auto flex h-44 w-full max-w-sm flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/60 bg-muted/40 p-6 text-center text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground">No conversation yet</p>
-                  <p>Start typing below or connect the voice agent to kick things off.</p>
+                  <p className="font-medium text-foreground">
+                    No conversation yet
+                  </p>
+                  <p>
+                    Start typing below or connect the voice agent to kick things
+                    off.
+                  </p>
                 </div>
               ) : (
                 sortedMessages.map((message: ChatMessage) => (
@@ -103,11 +121,12 @@ export function ChatPanel({}: ChatPanelProps) {
               disabled={isStreaming}
             />
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">
-                Tip: mention owners and dates—Micromanager keeps track automatically.
-              </p>
               <Button type="submit" disabled={isStreaming} className="gap-2">
-                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {isStreaming ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
                 Send
               </Button>
             </div>
@@ -166,7 +185,12 @@ interface RealtimeBucketProps {
   badge?: string;
 }
 
-function RealtimeBucket({ title, value, placeholder, badge }: RealtimeBucketProps) {
+function RealtimeBucket({
+  title,
+  value,
+  placeholder,
+  badge,
+}: RealtimeBucketProps) {
   const trimmed = value?.trim();
   const display = trimmed && trimmed.length > 0 ? trimmed : undefined;
   return (
@@ -183,7 +207,7 @@ function RealtimeBucket({ title, value, placeholder, badge }: RealtimeBucketProp
         <p
           className={cn(
             "whitespace-pre-wrap break-words text-sm leading-relaxed transition-colors",
-            display ? "text-foreground" : "text-muted-foreground/60",
+            display ? "text-foreground" : "text-muted-foreground/60"
           )}
         >
           {display ?? placeholder}

@@ -134,6 +134,19 @@
   .voice-visualizer {
     background: radial-gradient(circle at 50% 50%, hsl(var(--primary)) 0%, transparent 70%);
   }
+
+  .animate-gradient-slow {
+    animation: gradient-slow 18s ease infinite;
+    background-size: 200% 200%;
+  }
+
+  .animate-slide-left {
+    animation: ticker-slide-left 0.7s ease forwards;
+  }
+
+  .animate-slide-right {
+    animation: ticker-slide-right 0.7s ease forwards;
+  }
 }
 
 @keyframes accordion-down {
@@ -161,5 +174,39 @@
   }
   50% {
     opacity: 1;
+  }
+}
+
+@keyframes gradient-slow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes ticker-slide-left {
+  0% {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ticker-slide-right {
+  0% {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
   }
 }

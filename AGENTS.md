@@ -1,5 +1,7 @@
 # Agents
 
+Never start running the dev server yourself. It is already running at port 3000. If it doesn't work, then you may try to start one, or rather ask the user to do it.
+
 ## Micromanager Operations Copilot
 
 - **Type:** Hybrid text + voice GPT Realtime agent
