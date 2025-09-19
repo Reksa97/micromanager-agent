@@ -375,14 +375,20 @@ export function TelegramChatPanel({
                   <p className="whitespace-pre-wrap break-words text-sm">
                     {msg.content}
                   </p>
-                  {msg.metadata?.tokensUsed && (
-                    <div className="mt-1 flex items-center gap-1 opacity-60">
-                      <Zap className="h-2.5 w-2.5" />
-                      <span className="text-[10px]">
-                        {msg.metadata.tokensUsed} tokens
-                      </span>
-                    </div>
-                  )}
+                  {(() => {
+                    const tokensUsed = msg.metadata?.tokensUsed;
+                    if (typeof tokensUsed === 'number') {
+                      return (
+                        <div className="mt-1 flex items-center gap-1 opacity-60">
+                          <Zap className="h-2.5 w-2.5" />
+                          <span className="text-[10px]">
+                            {tokensUsed} tokens
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
             </div>
@@ -452,12 +458,18 @@ function AssistantBubble({ message }: AssistantBubbleProps) {
         {message.content || "(no response)"}
       </p>
       <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-        {message.metadata?.tokensUsed ? (
-          <span className="flex items-center gap-1">
-            <Zap className="h-2.5 w-2.5" />
-            {message.metadata.tokensUsed} tokens
-          </span>
-        ) : null}
+        {(() => {
+          const tokensUsed = message.metadata?.tokensUsed;
+          if (typeof tokensUsed === 'number') {
+            return (
+              <span className="flex items-center gap-1">
+                <Zap className="h-2.5 w-2.5" />
+                {tokensUsed} tokens
+              </span>
+            );
+          }
+          return null;
+        })()}
         {reasoning ? (
           <details className="group rounded-md border border-border/60 bg-background/40 px-3 py-2">
             <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground transition-colors group-open:text-foreground">

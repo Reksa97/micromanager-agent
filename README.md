@@ -4,8 +4,9 @@
 
 - Fork this repo (if you want your own Vercel deployment)
 - Install Node.js v22
-- `cd web && npm install`
-- `cp .env.sample .env` (and set all env variables to `.env`)
+- `cd web`
+- `npm install`
+- `cp .env.sample .env` (then fill out the values in `web/.env`)
 - `npm run dev`
 
 ## Integrations
@@ -17,7 +18,7 @@ Create your own cluster for development.
 
 ### OpenAI
 
-OpenAI API key is required for gpt-realtime and gpt5 models.
+OpenAI API key is required for both the realtime agent (`gpt-realtime`) and the text model (`gpt-5-nano`).
 
 ### Telegram
 

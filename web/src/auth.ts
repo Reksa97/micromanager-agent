@@ -43,41 +43,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         const parsed = credentialsSchema.safeParse(credentials ?? {});
         if (!parsed.success) {
-          console.warn(
-            "[auth][credentials] missing or invalid email/password field"
-          );
           return null;
         }
 
         const client = await clientPromise;
         const normalizedEmail = parsed.data.email.toLowerCase();
         const normalizedPassword = parsed.data.password;
-        console.warn("[auth][credentials] checking user", normalizedEmail);
         const user = await client
           .db()
           .collection<AdapterUser>("users")
           .findOne({ email: normalizedEmail });
 
         if (!user) {
-          console.warn("[auth][credentials] user not found", normalizedEmail);
           return null;
         }
 
         if (!user.password) {
-          console.warn(
-            "[auth][credentials] user missing password hash",
-            normalizedEmail
-          );
           return null;
         }
 
         const isValid = await verifyPassword(normalizedPassword, user.password);
 
         if (!isValid) {
-          console.warn(
-            "[auth][credentials] password mismatch",
-            normalizedEmail
-          );
           return null;
         }
 
