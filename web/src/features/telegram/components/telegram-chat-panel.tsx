@@ -8,17 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  Send,
-  Loader2,
-  AlertCircle,
-  Phone,
-  PhoneOff,
-  Zap,
-  Lightbulb,
-} from "lucide-react";
+import { Send, Loader2, Phone, PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { StoredMessage } from "@/lib/conversations";
@@ -26,16 +17,12 @@ import { TIER_PERMISSIONS, type UserProfile } from "@/types/user";
 import { useRealtimeAgent } from "@/features/chat/hooks/use-realtime-agent";
 import type { ChatMessage } from "@/features/chat/types";
 
-const DEFAULT_CONFIG_ITEMS = [
-  "Assign owners & due dates",
-  "Capture meeting notes",
-  "Summarize latest updates",
-] as const;
+const DEFAULT_CONFIG_ITEMS = [] as const;
 
 const DEFAULT_TICKER_CONTENT = {
-  user: "Describe what you need Micromanager to handle",
-  assistant: "Micromanager drafts your plan in real time",
-  tools: "Automations fire here when tools are engaged",
+  user: "-",
+  assistant: "Micromanaging...",
+  tools: "...",
 } as const;
 
 interface TelegramChatPanelProps {
@@ -50,7 +37,7 @@ export function TelegramChatPanel({
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -346,9 +333,9 @@ export function TelegramChatPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b bg-card/60 px-3 py-3">
+      <div className="bg-card/60 px-3 py-3">
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-1">
             <div className="flex items-center gap-2">
               <Badge
                 variant={profile?.tier === "paid" ? "secondary" : "outline"}
@@ -358,6 +345,16 @@ export function TelegramChatPanel({
               <span className="text-sm font-medium text-foreground">
                 {displayIdentity}
               </span>
+              {voiceStateLabel !== "Idle" && (
+                <span
+                  className={cn(
+                    "font-medium text-xs ",
+                    isVoiceActive ? "text-foreground" : undefined
+                  )}
+                >
+                  Voice agent: {voiceStateLabel}
+                </span>
+              )}
             </div>
             {TIER_PERMISSIONS[profile?.tier ?? "free"].hasVoiceAccess && (
               <Button
@@ -392,14 +389,6 @@ export function TelegramChatPanel({
           </div>
           {TIER_PERMISSIONS[profile?.tier ?? "free"].hasVoiceAccess && (
             <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-              <span
-                className={cn(
-                  "font-medium",
-                  isVoiceActive ? "text-foreground" : undefined
-                )}
-              >
-                Voice agent: {voiceStateLabel}
-              </span>
               <div className="flex items-center gap-2">
                 {realtime.voiceSignals.transcript ? (
                   <span className="truncate">
@@ -417,7 +406,7 @@ export function TelegramChatPanel({
           <form
             ref={formRef}
             onSubmit={handleSubmit}
-            className="space-y-2 rounded-xl border border-border/60 bg-background/80 p-3 shadow-sm"
+            className="bg-background/80 p-3 pb-6 shadow-sm"
           >
             <div className="flex gap-2">
               <textarea
@@ -432,13 +421,14 @@ export function TelegramChatPanel({
                 }}
                 placeholder="Type your message..."
                 disabled={isLoading}
-                className="min-h-[44px] max-h-[200px] flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-[44px] max-h-[200px] flex-1 resize-none rounded-lg border bg-background px-6 pt-[10px] text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 rows={1}
               />
               <Button
                 type="submit"
                 size="icon"
                 disabled={isLoading || !input.trim()}
+                className="min-h-[44px] min-w-[44px] rounded-lg"
               >
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -465,85 +455,6 @@ export function TelegramChatPanel({
             }
           />
           <DefaultConfigSquare />
-          <div className="relative">
-            <div className="aspect-square w-full overflow-hidden rounded-3xl border border-border/70 bg-card/80 shadow-inner">
-              <ScrollArea ref={scrollRef} className="h-full w-full">
-                <div className="flex h-full flex-col gap-4 p-4">
-                  <div className="flex-1 space-y-4">
-                    {messages.length === 0 ? (
-                      <div className="flex h-full items-center justify-center">
-                        <div className="flex max-w-xs flex-col items-center gap-2 text-center text-sm text-muted-foreground">
-                          <span className="font-medium text-foreground">
-                            Square ready for Micromanager
-                          </span>
-                          <span>
-                            Your assistant will render plans here once you start
-                            the conversation.
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      messages.map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={cn(
-                            "flex",
-                            msg.role === "user"
-                              ? "justify-end"
-                              : "justify-start"
-                          )}
-                        >
-                          {msg.role === "assistant" ? (
-                            <AssistantBubble message={msg} />
-                          ) : (
-                            <div
-                              className={cn(
-                                "max-w-[80%] rounded-lg px-4 py-2",
-                                "bg-primary text-primary-foreground"
-                              )}
-                            >
-                              <p className="whitespace-pre-wrap break-words text-sm">
-                                {msg.content}
-                              </p>
-                              {(() => {
-                                const tokensUsed = msg.metadata?.tokensUsed;
-                                if (typeof tokensUsed === "number") {
-                                  return (
-                                    <div className="mt-1 flex items-center gap-1 opacity-60">
-                                      <Zap className="h-2.5 w-2.5" />
-                                      <span className="text-[10px]">
-                                        {tokensUsed} tokens
-                                      </span>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })()}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                    {isLoading && (
-                      <div className="flex justify-start">
-                        <div className="rounded-lg bg-muted px-4 py-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {error && (
-                    <div className="flex justify-center">
-                      <div className="flex items-center gap-2 text-sm text-destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        {error}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -552,16 +463,8 @@ export function TelegramChatPanel({
 
 function DefaultConfigSquare() {
   return (
-    <div className="aspect-square w-full rounded-3xl border border-dashed border-border/70 bg-muted/10 p-4">
+    <div className="aspect-square w-full bg-muted/10 p-4">
       <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-        <div className="space-y-1">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Default workspace
-          </span>
-          <p className="text-sm text-muted-foreground/80">
-            Micromanager starts new users with a focused trio of tools.
-          </p>
-        </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           {DEFAULT_CONFIG_ITEMS.map((item) => (
             <span
@@ -591,10 +494,15 @@ function StatusTickerSection({
   return (
     <div className="relative overflow-hidden">
       <div className="absolute inset-0 animate-gradient-slow bg-[linear-gradient(120deg,hsl(var(--primary)/0.2),hsl(var(--accent)/0.1),hsl(var(--secondary)/0.25))]" />
-      <div className="relative space-y-1 px-0 py-1">
-        <TickerRow label="Latest user" text={userText} />
-        <TickerRow label="Assistant" text={assistantText} direction="reverse" />
-        <TickerRow label="Tool usage" text={toolText} />
+      <div className="pointer-events-none absolute inset-x-0 top-[33%] h-[67%] animate-gradient-slow bg-[linear-gradient(300deg,hsl(var(--secondary)/0.35),hsl(var(--accent)/0.25),hsl(var(--primary)/0.35))]" />
+      <div className="relative z-10 space-y-1 px-0 py-1">
+        <TickerRow label="User" text={userText} />
+        <TickerRow
+          label="Micromanager"
+          text={assistantText}
+          direction="reverse"
+        />
+        <TickerRow label="Tools" text={toolText} direction="reverse" />
       </div>
     </div>
   );
@@ -608,59 +516,17 @@ interface TickerRowProps {
 
 function TickerRow({ label, text, direction = "forward" }: TickerRowProps) {
   return (
-    <div className="flex flex-col gap-1 px-4">
+    <div className="flex flex-col gap-1 px-4 py-4">
       <span
-        className={`text-[10px] font-semibold uppercase tracking-widest  text-muted-foreground/80 ${
+        className={`text-[10px] h-4 font-semibold text-nowrap uppercase tracking-widest flex flex-row text-muted-foreground/80 ${
           direction === "reverse"
-            ? "animate-slide-right text-right"
-            : "animate-slide-left text-left"
+            ? "animate-slide-right justify-between"
+            : "animate-slide-left gap-4"
         }`}
       >
-        {label} {text}
+        <div className={`mr-4`}>{label}</div>
+        <div className={`overflow-y- overflow-x-scroll h-4`}>{text}</div>
       </span>
-    </div>
-  );
-}
-
-interface AssistantBubbleProps {
-  message: StoredMessage;
-}
-
-function AssistantBubble({ message }: AssistantBubbleProps) {
-  const reasoning =
-    typeof message.metadata?.reasoning === "string"
-      ? message.metadata.reasoning
-      : undefined;
-
-  return (
-    <div className="max-w-[80%] space-y-2 rounded-lg bg-muted px-4 py-3">
-      <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-        {message.content || "(no response)"}
-      </p>
-      <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-        {(() => {
-          const tokensUsed = message.metadata?.tokensUsed;
-          if (typeof tokensUsed === "number") {
-            return (
-              <span className="flex items-center gap-1">
-                <Zap className="h-2.5 w-2.5" />
-                {tokensUsed} tokens
-              </span>
-            );
-          }
-          return null;
-        })()}
-        {reasoning ? (
-          <details className="group rounded-md border border-border/60 bg-background/40 px-3 py-2">
-            <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground transition-colors group-open:text-foreground">
-              <Lightbulb className="h-3 w-3" /> Reasoning
-            </summary>
-            <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground/90">
-              {reasoning}
-            </pre>
-          </details>
-        ) : null}
-      </div>
     </div>
   );
 }

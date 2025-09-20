@@ -25,6 +25,7 @@ const getGitBranch = () => {
 
 const nextConfig = (phase: string): NextConfig => ({
   distDir: phase === PHASE_DEVELOPMENT_SERVER ? DEV_DIST_DIR : PROD_DIST_DIR,
+  transpilePackages: ['click-to-react-component-dev'],
   env: {
     NEXT_PUBLIC_GIT_HASH: getGitHash(),
     NEXT_PUBLIC_GIT_BRANCH: getGitBranch(),
