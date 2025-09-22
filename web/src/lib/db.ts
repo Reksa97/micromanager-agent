@@ -10,14 +10,13 @@ const options: MongoClientOptions = {
     strict: true,
     deprecationErrors: true,
   },
-  // Critical: Disable automatic IP family selection to prevent SSL errors
+  // Prevents MongoDB Atlas SSL errors on Vercel
   autoSelectFamily: false,
-  // Standard options for MongoDB Atlas
   retryWrites: true,
   w: "majority",
 };
 
-// Global caching for serverless environments (Vercel pattern)
+// Global caching for serverless environments
 declare global {
   var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
@@ -26,20 +25,17 @@ let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
 
 if (process.env.NODE_ENV === "development") {
-  // In development mode, use a global variable to preserve the value
-  // across module reloads caused by HMR (Hot Module Replacement).
+  // Use global variable for HMR in development
   if (!global._mongoClientPromise) {
     client = new MongoClient(uri, options);
     global._mongoClientPromise = client.connect();
   }
   clientPromise = global._mongoClientPromise;
 } else {
-  // In production mode, it's best to not use a global variable.
   client = new MongoClient(uri, options);
   clientPromise = client.connect();
 }
 
-// Export a module-scoped MongoClient promise for serverless efficiency
 export default clientPromise;
 
 export async function getMongoClient() {

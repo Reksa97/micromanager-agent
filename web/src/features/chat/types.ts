@@ -8,7 +8,6 @@ export interface ChatMessage {
   content: string;
   kind: ChatMessageKind;
   createdAt?: string;
-  streaming?: boolean;
   error?: string;
 }
 

@@ -12,10 +12,11 @@ interface BuildInfoProps {
 export function BuildInfo({ className, variant = "compact" }: BuildInfoProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const gitHash = process.env.NEXT_PUBLIC_GIT_HASH || "dev";
-  const gitBranch = process.env.NEXT_PUBLIC_GIT_BRANCH || "unknown";
-  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME || new Date().toISOString();
-  const buildEnv = process.env.NEXT_PUBLIC_BUILD_ENV || "development";
+  const gitHash = process.env.NEXT_PUBLIC_GIT_HASH ?? "dev";
+  const gitBranch = process.env.NEXT_PUBLIC_GIT_BRANCH ?? "unknown";
+  const buildTime =
+    process.env.NEXT_PUBLIC_BUILD_TIME ?? new Date().toISOString();
+  const buildEnv = process.env.NEXT_PUBLIC_BUILD_ENV ?? "development";
 
   // Format build time
   const formatBuildTime = (iso: string) => {
@@ -43,7 +44,9 @@ export function BuildInfo({ className, variant = "compact" }: BuildInfoProps) {
           className
         )}
         onClick={() => setExpanded(!expanded)}
-        title={`Branch: ${gitBranch}\nCommit: ${gitHash}\nBuilt: ${new Date(buildTime).toLocaleString()}\nEnv: ${buildEnv}`}
+        title={`Branch: ${gitBranch}\nCommit: ${gitHash}\nBuilt: ${new Date(
+          buildTime
+        ).toLocaleString()}\nEnv: ${buildEnv}`}
       >
         <Code className="h-3 w-3" />
         <span>{gitHash}</span>

@@ -1,5 +1,7 @@
 # Agents
 
+Never start running the dev server yourself. It is already running at port 3000. If it doesn't work, then you may try to start one, or rather ask the user to do it.
+
 ## Micromanager Operations Copilot
 
 - **Type:** Hybrid text + voice GPT Realtime agent
@@ -17,7 +19,7 @@
 
 - **Type:** GPT text completion (`gpt-5-mini` by default)
 - **API route:** `/api/chat`
-- **Streaming:** Server-sent streaming of assistant tokens to the UI with final persistence on completion and automatic tool-call replay
+- **Completion:** Single-shot assistant responses persisted after each turn, with optional tool calls handled server-side
 - **Usage:** Automatically powers the chat panel when realtime session is not active or prior to session bootstrap
 
 ## Voice Session Transport

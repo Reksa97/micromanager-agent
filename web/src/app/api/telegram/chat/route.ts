@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import { OpenAI } from "openai";
-import {
-  insertMessage,
-  getRecentMessages,
-  type StoredMessage,
-} from "@/lib/conversations";
+import { insertMessage, getRecentMessages } from "@/lib/conversations";
 import { env } from "@/env";
 import { MODELS } from "@/lib/utils";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { OpenAIAgent, runOpenAIAgent } from "@/lib/openai";
+import {
+  formatMicromanagerChatPrompt,
+  MICROMANAGER_CHAT_SYSTEM_PROMPT,
+} from "@/lib/agent/prompts";
+import { getUserContextDocument } from "@/lib/user-context";
+import { getBackendTools } from "@/lib/agent/tools.server";
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,62 +45,51 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date(),
     });
 
-    // Get recent conversation history
-    const history = await getRecentMessages(userId, 10);
+    const [userMessageHistory, userContextDoc] = await Promise.all([
+      getRecentMessages(userId, 3),
+      getUserContextDocument(userId),
+    ]);
 
-    // Prepare messages for GPT
-    const messages = [
-      {
-        role: "system" as const,
-        content:
-          "You are Micromanager, a helpful AI assistant in a Telegram Mini App. Keep responses concise and mobile-friendly. Be direct and helpful.",
-      },
-      ...history.map((msg) => ({
-        role: msg.role as "user" | "assistant" | "system",
-        content: msg.content,
-      })),
-    ];
+    const model = MODELS.textBudget;
+    const tools = getBackendTools(userId);
 
-    const completion = await openai.chat.completions.create({
-      model: MODELS.textBudget,
-      messages,
-      max_completion_tokens: 500,
+    const agent = new OpenAIAgent({
+      name: "micromanager",
+      instructions: MICROMANAGER_CHAT_SYSTEM_PROMPT,
+      model,
+      tools,
     });
 
-    const choice = completion.choices[0];
-    const aiResponse =
-      choice.message.content || "I couldn't generate a response.";
-    const tokensUsed = completion.usage?.total_tokens ?? null;
-    const reasoning =
-      (choice as { message?: { reasoning?: string } }).message?.reasoning ??
-      null;
+    const micromanagerAgentPrompt = formatMicromanagerChatPrompt({
+      userContextDoc: userContextDoc,
+      userMessageHistory: userMessageHistory,
+      userMessage: message,
+    });
 
-    const assistantMetadata: StoredMessage["metadata"] = {};
-    if (typeof tokensUsed === "number" && tokensUsed > 0) {
-      assistantMetadata.tokensUsed = tokensUsed;
-    }
-    if (typeof reasoning === "string" && reasoning.trim().length > 0) {
-      assistantMetadata.reasoning = reasoning.trim();
-    }
+    const agentResult = await runOpenAIAgent(agent, micromanagerAgentPrompt);
+
+    const response = agentResult.finalOutput ?? "No final output from agent";
+
+    console.log("Telegram Agent result", {
+      model,
+      response,
+      newItems: agentResult.newItems,
+      micromanagerAgentPrompt,
+    });
 
     // Store assistant response
     await insertMessage({
       userId,
       role: "assistant",
-      content: aiResponse,
+      content: response,
       type: "text",
       source: "micromanager",
       createdAt: new Date(),
       updatedAt: new Date(),
-      metadata: Object.keys(assistantMetadata).length
-        ? assistantMetadata
-        : undefined,
     });
 
     return NextResponse.json({
-      response: aiResponse,
-      tokensUsed,
-      reasoning,
+      response,
     });
   } catch (error) {
     console.error("Telegram chat error:", error);

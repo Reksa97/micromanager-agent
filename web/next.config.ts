@@ -29,7 +29,8 @@ const nextConfig = (phase: string): NextConfig => ({
     NEXT_PUBLIC_GIT_HASH: getGitHash(),
     NEXT_PUBLIC_GIT_BRANCH: getGitBranch(),
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
-    NEXT_PUBLIC_BUILD_ENV: phase === PHASE_DEVELOPMENT_SERVER ? "development" : "production",
+    NEXT_PUBLIC_BUILD_ENV:
+      phase === PHASE_DEVELOPMENT_SERVER ? "development" : "production",
   },
 });
 

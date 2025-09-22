@@ -14,7 +14,7 @@ import {
 } from "@openai/agents-realtime";
 
 import type { ChatMessage, VoiceSessionSignals } from "@/features/chat/types";
-import { createRealtimeContextTools } from "@/lib/agent/context-tools";
+import { getFrontendTools } from "@/lib/agent/tools";
 
 interface UseRealtimeAgentOptions {
   onMessages?: (messages: ChatMessage[]) => void;
@@ -27,9 +27,6 @@ const INITIAL_SIGNALS: VoiceSessionSignals = {
   state: "idle",
   lastUpdate: Date.now(),
 };
-
-const BASE_REALTIME_INSTRUCTIONS =
-  "You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items.";
 
 type TransportConnectionState =
   | "connecting"
@@ -160,14 +157,12 @@ export function useRealtimeAgent({
       ? {
           ...existing,
           content: `${existing.content}${delta}`,
-          streaming: true,
         }
       : {
           id: nanoid(),
           role: "assistant",
           content: delta,
           kind: "audio",
-          streaming: true,
           createdAt: timestamp,
         };
 
@@ -290,39 +285,6 @@ export function useRealtimeAgent({
         contextSnapshot = "User context could not be retrieved at this time.";
       }
 
-      const contextTools = createRealtimeContextTools({
-        onResult: ({ toolName, output, metadata, args }) => {
-          pendingForPersistence.current.push({
-            id: nanoid(),
-            role: "tool",
-            content: output,
-            kind: "tool",
-            createdAt: new Date().toISOString(),
-            metadata: {
-              toolName,
-              arguments: args,
-              ...(metadata ?? {}),
-            },
-          });
-          setSignals((prev) => ({
-            ...prev,
-            actionSummary: `Tool ${toolName} completed`,
-            lastUpdate: Date.now(),
-          }));
-          void flushPending();
-        },
-        onError: (toolError) => {
-          console.error("Realtime context tool error", toolError);
-          setSignals((prev) => ({
-            ...prev,
-            error: toolError.message,
-            lastUpdate: Date.now(),
-          }));
-          onError?.(toolError);
-        },
-        getAuthToken: () => authTokenGetterRef.current(),
-      });
-
       const response = await fetch(
         "/api/realtime/session",
         withAuth({ method: "POST" })
@@ -337,10 +299,15 @@ export function useRealtimeAgent({
         throw new Error("Realtime token missing from response");
       }
 
+      const tools = getFrontendTools();
+
       const agent = new RealtimeAgent({
         name: "Micromanager",
-        instructions: `${BASE_REALTIME_INSTRUCTIONS}\n\nCurrent user context snapshot:\n${contextSnapshot}`,
-        tools: contextTools.tools,
+        instructions: `You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items. Start the session by summarizing the user context and current weather in Helsinki.
+User context:
+${contextSnapshot}
+`,
+        tools,
       });
 
       agentRef.current = agent;

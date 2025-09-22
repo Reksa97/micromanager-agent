@@ -8,8 +8,10 @@ import { notifyTelegramUser } from "@/lib/telegram/bot";
 const messageSchema = z.object({
   role: z.enum(["user", "assistant", "system", "tool"]),
   content: z.string().min(1),
-  type: z.enum(["text", "tool", "state", "audio"]).default("text"),
-  source: z.enum(["telegram-user", "web-user", "micromanager", "realtime-agent"]).optional(),
+  type: z.enum(["text"]).default("text"),
+  source: z
+    .enum(["telegram-user", "web-user", "micromanager", "realtime-agent"])
+    .optional(),
   createdAt: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -29,8 +31,11 @@ export async function POST(request: Request) {
 
   if (!parseResult.success) {
     return NextResponse.json(
-      { error: "Invalid payload", details: parseResult.error.flatten().fieldErrors },
-      { status: 422 },
+      {
+        error: "Invalid payload",
+        details: parseResult.error.flatten().fieldErrors,
+      },
+      { status: 422 }
     );
   }
 
@@ -53,11 +58,17 @@ export async function POST(request: Request) {
   // Try to notify Telegram user about realtime agent messages
   for (const message of parseResult.data.messages) {
     if (message.role === "user") {
-      notifyTelegramUser(userId, `🎤 Voice message from web:\n\n${message.content}`).catch((error) => {
+      notifyTelegramUser(
+        userId,
+        `🎤 Voice message from web:\n\n${message.content}`
+      ).catch((error) => {
         console.error("Failed to send Telegram notification:", error);
       });
     } else if (message.role === "assistant") {
-      notifyTelegramUser(userId, `🤖 Assistant response:\n\n${message.content}`).catch((error) => {
+      notifyTelegramUser(
+        userId,
+        `🤖 Assistant response:\n\n${message.content}`
+      ).catch((error) => {
         console.error("Failed to send Telegram notification:", error);
       });
     }

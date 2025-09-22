@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import {
-  deleteUserContextValue,
-  formatContextForPrompt,
-  getUserContextDocument,
-  setUserContextValue,
-} from "@/lib/user-context";
+import { getUserContextDocument } from "@/lib/user-context";
 import { jwtVerify } from "jose";
 import { env } from "@/env";
 
@@ -76,12 +71,8 @@ export async function POST(request: NextRequest) {
   switch (payload.action) {
     case "get": {
       const doc = await getUserContextDocument(userId);
-      const output =
-        payload.format === "text"
-          ? formatContextForPrompt(doc)
-          : JSON.stringify(doc.data, null, 2);
       return NextResponse.json({
-        output,
+        output: JSON.stringify(doc.data, null, 2),
         metadata: {
           updatedAt: doc.updatedAt.toISOString(),
           format: payload.format ?? "json",
@@ -89,34 +80,8 @@ export async function POST(request: NextRequest) {
       });
     }
     case "set": {
-      const { path, updatedAt } = await setUserContextValue(
-        userId,
-        payload.segments,
-        payload.value
-      );
-      const renderedValue = JSON.stringify(payload.value, null, 2);
-      return NextResponse.json({
-        output: `Stored value at path "${path}":\n${renderedValue}`,
-        metadata: {
-          operation: "set",
-          path,
-          updatedAt: updatedAt.toISOString(),
-        },
-      });
-    }
-    case "delete": {
-      const { path, updatedAt } = await deleteUserContextValue(
-        userId,
-        payload.segments
-      );
-      return NextResponse.json({
-        output: `Removed value at path "${path}".`,
-        metadata: {
-          operation: "delete",
-          path,
-          updatedAt: updatedAt.toISOString(),
-        },
-      });
+      console.error("Not implemented");
+      return NextResponse.json({ error: "Not implemented" }, { status: 501 });
     }
     default:
       return NextResponse.json(

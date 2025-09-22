@@ -8,7 +8,7 @@
 - **Data:** MongoDB Atlas (connection string via `MONGODB_URI`), dedicated collections for users and conversation messages
 - **AI:** OpenAI GPT APIs
   - `gpt-realtime` via WebRTC (voice + actions)
-  - `gpt-5-mini` (text fallback streaming)
+  - `gpt-5-mini` (text fallback completions)
 - **UI Enhancements:** `framer-motion`, Radix UI primitives, Sonner toasts
 
 ## Runtime Flow
@@ -26,9 +26,9 @@
 
 3. **Text Chat Pipeline**
 
-   - Client hook `useChat` fetches history from `/api/chat` (GET) and polls on a sliding interval (1s while assistant messages are streaming, 10s when idle)
-   - Submissions optimistically add the user message plus an assistant placeholder, POST to `/api/chat`, and keep polling until the backend finalises the turn
-   - `/api/chat` now runs server-side streaming only: it inserts the user turn, creates an assistant stub with `metadata.streaming=true`, streams OpenAI deltas, throttles Mongo updates (~1s), marks the message complete, and returns a JSON acknowledgment with the final text or error state
+   - Client hook `useChat` fetches history from `/api/chat` (GET) and polls every ~10s to surface updates from other channels
+   - Submissions optimistically add the user message plus an assistant placeholder, POST to `/api/chat`, update the placeholder with the server response, and refresh history in the background
+   - `/api/chat` performs a synchronous agent run: it inserts the user turn, creates an assistant stub, executes the OpenAI agent, updates the stored assistant message with the final output (or error metadata), and returns a JSON acknowledgment
 
 4. **Realtime Voice Pipeline**
 

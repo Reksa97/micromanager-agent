@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
-
 import { getMongoClient } from "@/lib/db";
+
+const COLLECTION = "user_contexts";
 
 export interface UserContextDocument {
   _id?: ObjectId;
@@ -10,33 +11,16 @@ export interface UserContextDocument {
   updatedAt: Date;
 }
 
-const COLLECTION = "user_contexts";
-
-async function collection() {
+async function getUserContextCollection() {
   const client = await getMongoClient();
   const col = client.db().collection<UserContextDocument>(COLLECTION);
   await col.createIndex({ userId: 1 }, { unique: true });
   return col;
 }
 
-function toDotPath(segments: string[]) {
-  if (!Array.isArray(segments) || segments.length === 0) {
-    throw new Error("Path segments must be a non-empty array");
-  }
-  for (const segment of segments) {
-    if (typeof segment !== "string" || segment.trim().length === 0) {
-      throw new Error("Each path segment must be a non-empty string");
-    }
-    if (segment.includes("\0")) {
-      throw new Error("Path segments cannot include null bytes");
-    }
-  }
-  return segments.join(".");
-}
-
 export async function getUserContextDocument(userId: string) {
-  const col = await collection();
-  const doc = await col.findOne({ userId });
+  const collection = await getUserContextCollection();
+  const doc = await collection.findOne({ userId });
   if (doc) {
     return doc;
   }
@@ -47,76 +31,33 @@ export async function getUserContextDocument(userId: string) {
     createdAt: now,
     updatedAt: now,
   };
-  await col.insertOne(base);
+  await collection.insertOne(base);
   return base;
 }
 
-export async function setUserContextValue(userId: string, segments: string[], value: unknown) {
-  const col = await collection();
-  const path = toDotPath(segments);
-  const now = new Date();
-  await col.updateOne(
+export async function updateUserContextDocument(
+  userId: string,
+  contextUpdates: { path: string; value?: unknown }[]
+) {
+  const collection = await getUserContextCollection();
+  const doc = await collection.findOneAndUpdate(
     { userId },
     {
       $set: {
-        [`data.${path}`]: value,
-        updatedAt: now,
-      },
-      $setOnInsert: {
-        createdAt: now,
-        data: {},
-      },
-    },
-    { upsert: true },
-  );
-  return {
-    path,
-    updatedAt: now,
-  };
-}
-
-export async function deleteUserContextValue(userId: string, segments: string[]) {
-  const col = await collection();
-  const path = toDotPath(segments);
-  const now = new Date();
-  await col.updateOne(
-    { userId },
-    {
-      $unset: {
-        [`data.${path}`]: "",
-      },
-      $set: { updatedAt: now },
-      $setOnInsert: {
-        createdAt: now,
-        data: {},
+        ...contextUpdates.reduce((acc, update) => {
+          const fullPath = `data.${update.path}`;
+          acc[fullPath] = update.value;
+          if (update.value === undefined) {
+            acc[fullPath] = null;
+          }
+          return acc;
+        }, {} as Record<string, unknown>),
       },
     },
-    { upsert: true },
+    { returnDocument: "after" }
   );
-  return {
-    path,
-    updatedAt: now,
-  };
-}
-
-export function summarizeContextData(data: Record<string, unknown>) {
-  const keys = Object.keys(data);
-  if (keys.length === 0) {
-    return "The user context is currently empty.";
+  if (!doc) {
+    throw new Error("Failed to update user context document");
   }
-  return JSON.stringify(data, null, 2);
+  return doc;
 }
-
-export function formatContextForPrompt(doc: UserContextDocument) {
-  const summary = summarizeContextData(doc.data);
-  return `User context snapshot (updated ${doc.updatedAt.toISOString()}):\n${summary}`;
-}
-
-export function formatContextForDisplay(doc: UserContextDocument) {
-  const summary = summarizeContextData(doc.data);
-  return {
-    text: summary,
-    updatedAt: doc.updatedAt,
-  };
-}
-

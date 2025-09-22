@@ -18,10 +18,9 @@ export interface StoredMessage {
   content: string;
   createdAt: Date;
   updatedAt: Date;
-  type: "text" | "tool" | "state" | "audio";
+  type: "text";
   source?: MessageSource;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   telegramChatId?: number | string;
 }
 

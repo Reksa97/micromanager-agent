@@ -160,15 +160,12 @@ export default function TelegramLoginPage() {
       }
 
       try {
-        // Log current environment
         console.log("[Telegram Login] Window location:", window.location.href);
         console.log("[Telegram Login] User Agent:", navigator.userAgent);
         console.log("[Telegram Login] Platform:", navigator.platform);
 
-        // Initialize Telegram SDK
         console.log("[Telegram Login] Initializing Telegram SDK...");
 
-        // Parse the data from URL hash first
         const hash = window.location.hash.substring(1);
         const params = new URLSearchParams(hash);
         const tgWebAppData = params.get("tgWebAppData");
@@ -178,14 +175,11 @@ export default function TelegramLoginPage() {
 
         init();
 
-        // Collect all available metadata
         const collectedMetadata: TelegramMetadata = {};
 
         try {
-          // Try to get init data from SDK first, then fallback to URL
           let rawInitData = initData.raw();
 
-          // If SDK doesn't have it, use the URL data
           if (!rawInitData && tgWebAppData) {
             rawInitData = decodeURIComponent(tgWebAppData);
             console.log("[Telegram Login] Using init data from URL hash");
@@ -194,7 +188,6 @@ export default function TelegramLoginPage() {
           collectedMetadata.initData = rawInitData;
           console.log("[Telegram Login] Raw init data:", rawInitData);
 
-          // Parse init data components
           if (rawInitData) {
             const urlParams = new URLSearchParams(rawInitData);
 

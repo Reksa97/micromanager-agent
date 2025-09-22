@@ -20,14 +20,12 @@ interface UseChatOptions {
   onError?: (error: Error) => void;
 }
 
-const IDLE_POLL_INTERVAL_MS = 10_000;
-const ACTIVE_POLL_INTERVAL_MS = 1_000;
+const POLL_INTERVAL_MS = 10_000;
 
 export function useChat({ onError }: UseChatOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const abortRef = useRef<AbortController | null>(null);
   const onErrorRef = useRef(onError);
   const isFetchingRef = useRef(false);
 
@@ -48,9 +46,6 @@ export function useChat({ onError }: UseChatOptions = {}) {
       }
 
       try {
-        if (process.env.NODE_ENV === "development") {
-          console.debug("[chat] refreshing history", new Date().toISOString());
-        }
         const response = await fetch("/api/chat", { cache: "no-store" });
         if (!response.ok) {
           throw new Error("Failed to load chat history");
@@ -64,11 +59,12 @@ export function useChat({ onError }: UseChatOptions = {}) {
             content: msg.content,
             kind: msg.type ?? "text",
             createdAt: msg.createdAt,
-            streaming: Boolean((msg.metadata as { streaming?: boolean } | undefined)?.streaming),
-            error: typeof (msg.metadata as { error?: string } | undefined)?.error === "string"
-              ? (msg.metadata as { error?: string }).error
-              : undefined,
-          })),
+            error:
+              typeof (msg.metadata as { error?: string } | undefined)?.error ===
+              "string"
+                ? (msg.metadata as { error?: string }).error
+                : undefined,
+          }))
         );
       } catch (error) {
         console.error(error);
@@ -78,7 +74,7 @@ export function useChat({ onError }: UseChatOptions = {}) {
         isFetchingRef.current = false;
       }
     },
-    [],
+    []
   );
 
   useEffect(() => {
@@ -86,91 +82,106 @@ export function useChat({ onError }: UseChatOptions = {}) {
   }, [loadHistory]);
 
   useEffect(() => {
-    const hasStreamingMessages = messages.some((msg) => msg.streaming);
-    const pollInterval = isStreaming || hasStreamingMessages ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
-
     const interval = setInterval(() => {
-      loadHistory({ showLoader: false });
-    }, pollInterval);
+      void loadHistory({ showLoader: false });
+    }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [isStreaming, messages, loadHistory]);
-
-  const cancelStreaming = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setIsStreaming(false);
-  }, []);
+  }, [loadHistory]);
 
   const sendMessage = useCallback(
     async (text: string) => {
-      if (!text.trim() || isStreaming) return;
+      const trimmed = text.trim();
+      if (!trimmed || isSending) return;
 
+      const timestamp = new Date().toISOString();
       const userMessage: ChatMessage = {
         id: nanoid(),
         role: "user",
-        content: text,
+        content: trimmed,
         kind: "text",
+        createdAt: timestamp,
       };
 
-      const assistantMessage: ChatMessage = {
-        id: nanoid(),
+      const assistantMessageId = nanoid();
+      const assistantPlaceholder: ChatMessage = {
+        id: assistantMessageId,
         role: "assistant",
         content: "Thinking…",
         kind: "text",
-        streaming: true,
+        createdAt: timestamp,
       };
 
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
-      setIsStreaming(true);
-
-      const controller = new AbortController();
-      abortRef.current = controller;
+      setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
+      setIsSending(true);
 
       try {
         const response = await fetch("/api/chat", {
           method: "POST",
-          signal: controller.signal,
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify({ message: trimmed }),
         });
 
         if (!response.ok) {
           const errorBody = await response.json().catch(() => null);
-          throw new Error((errorBody as { error?: string } | null)?.error ?? "Failed to send message");
+          throw new Error(
+            (errorBody as { error?: string } | null)?.error ??
+              "Failed to send message"
+          );
         }
+
+        const data = (await response.json().catch(() => null)) as {
+          messageId?: string;
+          content?: string;
+        } | null;
+
+        const finalContent = data?.content?.trim();
+        const finalId = data?.messageId;
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? {
+                  ...msg,
+                  id: finalId ?? msg.id,
+                  content:
+                    finalContent && finalContent.length > 0
+                      ? finalContent
+                      : "No response from assistant.",
+                  createdAt: new Date().toISOString(),
+                }
+              : msg
+          )
+        );
       } catch (error) {
         console.error(error);
         const err = error as Error;
         setMessages((prev) =>
           prev.map((msg) =>
-            msg.id === assistantMessage.id
+            msg.id === assistantMessageId
               ? {
                   ...msg,
-                  streaming: false,
+                  content: msg.content ?? "Something went wrong.",
                   error: err.message,
-                  content: msg.content || "Something went wrong.",
                 }
-              : msg,
-          ),
+              : msg
+          )
         );
         onErrorRef.current?.(err);
       } finally {
-        abortRef.current = null;
-        setIsStreaming(false);
+        setIsSending(false);
         void loadHistory({ showLoader: false });
       }
     },
-    [isStreaming, loadHistory],
+    [isSending, loadHistory]
   );
 
   return {
     messages,
-    isStreaming,
+    isSending,
     isLoadingHistory,
     sendMessage,
-    cancelStreaming,
   };
 }
