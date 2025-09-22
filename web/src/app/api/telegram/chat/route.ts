@@ -11,6 +11,7 @@ import {
 } from "@/lib/agent/prompts";
 import { getUserContextDocument } from "@/lib/user-context";
 import { updateContextTool } from "@/lib/agent/tools.server";
+import { hostedMcpTool, Tool } from "@openai/agents";
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,15 +54,29 @@ export async function POST(req: NextRequest) {
 
     const model = MODELS.textBudget;
 
+    const tools: Tool[] = [
+      getWeatherTool,
+      // getContextTool(userId), Context is included in the system prompt
+      updateContextTool(userId),
+    ];
+
+    if (process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING) {
+      console.log("Adding Google Calendar tool with test token");
+      tools.push(
+        hostedMcpTool({
+          serverLabel: "google_calendar",
+          connectorId: "connector_googlecalendar",
+          requireApproval: "never",
+          authorization: process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING,
+        })
+      );
+    }
+
     const agent = new OpenAIAgent({
       name: "micromanager",
       instructions: MICROMANAGER_CHAT_SYSTEM_PROMPT,
       model,
-      tools: [
-        getWeatherTool,
-        // getContextTool(userId), Context is included in the system prompt
-        updateContextTool(userId),
-      ],
+      tools,
     });
 
     const micromanagerAgentPrompt = formatMicromanagerChatPrompt({
@@ -76,6 +91,7 @@ export async function POST(req: NextRequest) {
 
     console.log("Telegram Agent result", {
       model,
+      response,
       newItems: agentResult.newItems,
       micromanagerAgentPrompt,
     });
