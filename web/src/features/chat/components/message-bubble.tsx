@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Sparkles, User, Bot, AlertTriangle } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -49,20 +49,6 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               : "bg-muted/70 text-muted-foreground ring-1 ring-border/40 backdrop-blur",
           )}
         >
-          <AnimatePresence mode="popLayout">
-            {message.streaming && (
-              <motion.div
-                key="streaming"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute right-2 top-2 flex items-center gap-1 text-[10px] uppercase tracking-widest text-primary-foreground/70"
-              >
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-                streaming
-              </motion.div>
-            )}
-          </AnimatePresence>
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
           {message.error && (
             <div className="mt-2 flex items-center gap-2 text-xs text-destructive-foreground">

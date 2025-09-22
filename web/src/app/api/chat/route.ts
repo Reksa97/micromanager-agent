@@ -11,12 +11,11 @@ import { notifyTelegramUser } from "@/lib/telegram/bot";
 import { OpenAIAgent, runOpenAIAgent } from "@/lib/openai";
 import { MODELS } from "@/lib/utils";
 import { getUserContextDocument } from "@/lib/user-context";
-import { getWeatherTool } from "@/lib/agent/tools";
 import {
   formatMicromanagerChatPrompt,
   MICROMANAGER_CHAT_SYSTEM_PROMPT,
 } from "@/lib/agent/prompts";
-import { updateContextTool } from "@/lib/agent/tools.server";
+import { getBackendTools } from "@/lib/agent/tools.server";
 
 const requestSchema = z.object({
   message: z.string().min(1),
@@ -80,10 +79,10 @@ export async function POST(request: Request) {
       source: "micromanager",
       createdAt: now,
       updatedAt: now,
-      metadata: { streaming: true },
     });
 
     const model = MODELS.text;
+    const tools = getBackendTools(userId);
     const micromanagerAgentPrompt = formatMicromanagerChatPrompt({
       userContextDoc,
       userMessageHistory,
@@ -94,11 +93,7 @@ export async function POST(request: Request) {
       name: "micromanager",
       instructions: MICROMANAGER_CHAT_SYSTEM_PROMPT,
       model,
-      tools: [
-        getWeatherTool,
-        //getContextTool(userId), Context is included in the system prompt
-        updateContextTool(userId),
-      ],
+      tools,
     });
 
     const agentResult = await runOpenAIAgent(agent, micromanagerAgentPrompt);
@@ -114,7 +109,6 @@ export async function POST(request: Request) {
       agentResult.finalOutput?.trim() ?? "No final output from agent";
     await updateMessage(activeAssistantMessageId, {
       content: finalContent,
-      metadata: { streaming: false },
       type: "text",
     });
 
@@ -137,7 +131,7 @@ export async function POST(request: Request) {
     if (activeAssistantMessageId) {
       await updateMessage(activeAssistantMessageId, {
         content: err.message,
-        metadata: { streaming: false, error: err.message },
+        metadata: { error: err.message },
       });
     }
 

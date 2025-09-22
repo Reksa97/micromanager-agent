@@ -47,8 +47,8 @@ export default async function Home() {
           </Badge>
           <h1 className="text-3xl font-semibold text-foreground">AI Agent Control Room</h1>
           <p className="max-w-xl text-sm text-muted-foreground">
-            Manage conversations, escalate blockers, and spin up realtime copilots powered by GPT Realtime. Every
-            message streams live to the client and is persisted per user once complete.
+            Manage conversations, escalate blockers, and spin up realtime copilots powered by GPT Realtime. Messages
+            are persisted per user once complete.
           </p>
         </div>
         <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-background/60 px-4 py-3 shadow-sm">

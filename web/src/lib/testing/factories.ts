@@ -122,35 +122,6 @@ export class TestFactory {
     };
   }
 
-  static createStreamChunk(content: string, isLast: boolean = false) {
-    return {
-      id: `chatcmpl-${Date.now()}`,
-      object: "chat.completion.chunk",
-      created: Math.floor(Date.now() / 1000),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: isLast ? {} : { content },
-          finish_reason: isLast ? "stop" : null,
-        },
-      ],
-    };
-  }
-
-  static async *createStreamResponse(text: string, chunkSize: number = 5) {
-    const words = text.split(" ");
-
-    for (let i = 0; i < words.length; i += chunkSize) {
-      const chunk = words
-        .slice(i, Math.min(i + chunkSize, words.length))
-        .join(" ");
-      yield TestFactory.createStreamChunk(i === 0 ? chunk : ` ${chunk}`, false);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-
-    yield TestFactory.createStreamChunk("", true);
-  }
 }
 
 // Helper function for creating mock API responses

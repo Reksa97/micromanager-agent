@@ -44,10 +44,11 @@ export async function updateUserContextDocument(
     { userId },
     {
       $set: {
-        data: contextUpdates.reduce((acc, update) => {
-          acc[update.path] = update.value;
+        ...contextUpdates.reduce((acc, update) => {
+          const fullPath = `data.${update.path}`;
+          acc[fullPath] = update.value;
           if (update.value === undefined) {
-            acc[update.path] = null;
+            acc[fullPath] = null;
           }
           return acc;
         }, {} as Record<string, unknown>),

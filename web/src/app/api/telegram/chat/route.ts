@@ -4,14 +4,12 @@ import { insertMessage, getRecentMessages } from "@/lib/conversations";
 import { env } from "@/env";
 import { MODELS } from "@/lib/utils";
 import { OpenAIAgent, runOpenAIAgent } from "@/lib/openai";
-import { getWeatherTool } from "@/lib/agent/tools";
 import {
   formatMicromanagerChatPrompt,
   MICROMANAGER_CHAT_SYSTEM_PROMPT,
 } from "@/lib/agent/prompts";
 import { getUserContextDocument } from "@/lib/user-context";
-import { updateContextTool } from "@/lib/agent/tools.server";
-import { hostedMcpTool, Tool } from "@openai/agents";
+import { getBackendTools } from "@/lib/agent/tools.server";
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,28 +51,7 @@ export async function POST(req: NextRequest) {
     ]);
 
     const model = MODELS.textBudget;
-
-    const tools: Tool[] = [
-      getWeatherTool,
-      // getContextTool(userId), Context is included in the system prompt
-      updateContextTool(userId),
-    ];
-
-    if (process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING) {
-      // Get your personal access token for Google Calendar
-      // 1. Visit https://developers.google.com/oauthplayground/
-      // 2. Input https://www.googleapis.com/auth/calendar.events as the required scope
-      // 3. Grab the acccess token starting with "ya29."
-      console.log("Adding Google Calendar tool with test token");
-      tools.push(
-        hostedMcpTool({
-          serverLabel: "google_calendar",
-          connectorId: "connector_googlecalendar",
-          requireApproval: "never",
-          authorization: process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING,
-        })
-      );
-    }
+    const tools = getBackendTools(userId);
 
     const agent = new OpenAIAgent({
       name: "micromanager",

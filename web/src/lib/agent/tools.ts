@@ -9,3 +9,7 @@ export const getWeatherTool = tool({
     return `The weather in ${city} is sunny and 25 degrees Celsius.`;
   },
 });
+
+export const getFrontendTools = () => {
+  return [getWeatherTool];
+};

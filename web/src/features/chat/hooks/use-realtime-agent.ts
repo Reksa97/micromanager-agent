@@ -14,7 +14,7 @@ import {
 } from "@openai/agents-realtime";
 
 import type { ChatMessage, VoiceSessionSignals } from "@/features/chat/types";
-import { getWeatherTool } from "@/lib/agent/tools";
+import { getFrontendTools } from "@/lib/agent/tools";
 
 interface UseRealtimeAgentOptions {
   onMessages?: (messages: ChatMessage[]) => void;
@@ -157,14 +157,12 @@ export function useRealtimeAgent({
       ? {
           ...existing,
           content: `${existing.content}${delta}`,
-          streaming: true,
         }
       : {
           id: nanoid(),
           role: "assistant",
           content: delta,
           kind: "audio",
-          streaming: true,
           createdAt: timestamp,
         };
 
@@ -301,13 +299,15 @@ export function useRealtimeAgent({
         throw new Error("Realtime token missing from response");
       }
 
+      const tools = getFrontendTools();
+
       const agent = new RealtimeAgent({
         name: "Micromanager",
         instructions: `You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items. Start the session by summarizing the user context and current weather in Helsinki.
 User context:
 ${contextSnapshot}
 `,
-        tools: [getWeatherTool],
+        tools,
       });
 
       agentRef.current = agent;

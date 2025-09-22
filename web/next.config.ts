@@ -25,12 +25,12 @@ const getGitBranch = () => {
 
 const nextConfig = (phase: string): NextConfig => ({
   distDir: phase === PHASE_DEVELOPMENT_SERVER ? DEV_DIST_DIR : PROD_DIST_DIR,
-  transpilePackages: ['click-to-react-component-dev'],
   env: {
     NEXT_PUBLIC_GIT_HASH: getGitHash(),
     NEXT_PUBLIC_GIT_BRANCH: getGitBranch(),
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
-    NEXT_PUBLIC_BUILD_ENV: phase === PHASE_DEVELOPMENT_SERVER ? "development" : "production",
+    NEXT_PUBLIC_BUILD_ENV:
+      phase === PHASE_DEVELOPMENT_SERVER ? "development" : "production",
   },
 });
 

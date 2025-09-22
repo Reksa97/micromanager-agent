@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Loader2, Send, Square } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,13 +23,7 @@ interface ChatPanelProps {
 export function ChatPanel({}: ChatPanelProps) {
   const [input, setInput] = useState("");
 
-  const {
-    messages,
-    isStreaming,
-    isLoadingHistory,
-    sendMessage,
-    cancelStreaming,
-  } = useChat({
+  const { messages, isSending, isLoadingHistory, sendMessage } = useChat({
     onError: (error) => toast.error(error.message),
   });
 
@@ -58,10 +52,6 @@ export function ChatPanel({}: ChatPanelProps) {
     await sendMessage(trimmed);
   };
 
-  const handleCancel = () => {
-    cancelStreaming();
-  };
-
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
       <Card className="glass border border-border/70">
@@ -75,17 +65,6 @@ export function ChatPanel({}: ChatPanelProps) {
               time.
             </p>
           </div>
-          {isStreaming && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCancel}
-              className="gap-2 text-destructive"
-            >
-              <Square className="h-4 w-4" />
-              Stop streaming
-            </Button>
-          )}
         </CardHeader>
         <CardContent className="flex h-[560px] flex-col">
           <ScrollArea className="flex-1 pr-4">
@@ -118,11 +97,11 @@ export function ChatPanel({}: ChatPanelProps) {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               className="min-h-[96px] resize-none"
-              disabled={isStreaming}
+              disabled={isSending}
             />
             <div className="flex items-center justify-between gap-3">
-              <Button type="submit" disabled={isStreaming} className="gap-2">
-                {isStreaming ? (
+              <Button type="submit" disabled={isSending} className="gap-2">
+                {isSending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Send className="h-4 w-4" />

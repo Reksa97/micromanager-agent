@@ -1,6 +1,5 @@
 import { testConfig, isIntegrationTest } from "./config";
 import type {
-  ChatCompletionChunk,
   ChatCompletion,
   ChatCompletionMessageParam,
   ChatCompletionTool,
@@ -9,7 +8,7 @@ import type {
 const model = "gpt-5-mini";
 
 interface MockResponse {
-  type: "completion" | "stream" | "tool_call";
+  type: "completion" | "tool_call";
   response: unknown;
   delay?: number;
 }
@@ -37,21 +36,17 @@ export class OpenAIMock {
 
   async chatCompletion(
     params: Record<string, unknown>
-  ): Promise<ChatCompletion | AsyncIterable<ChatCompletionChunk>> {
+  ): Promise<ChatCompletion> {
     if (isIntegrationTest() && this.realClient) {
       const response = await this.realClient.chat.completions.create(params);
       if (testConfig.recordResponses) {
         this.recordInteraction(params, response);
       }
-      return response as ChatCompletion | AsyncIterable<ChatCompletionChunk>;
+      return response as ChatCompletion;
     }
 
     // Mock response
     const mockResponse = this.getMockResponse(params);
-
-    if (params.stream) {
-      return this.createMockStream(mockResponse);
-    }
 
     await this.simulateDelay(mockResponse.delay || 0);
     return mockResponse.response as ChatCompletion;
@@ -69,12 +64,6 @@ export class OpenAIMock {
       (lastMessage as { content?: string }).content?.includes("context")
     ) {
       return this.createToolCallResponse();
-    }
-
-    if (params.stream) {
-      return this.createStreamResponse(
-        (lastMessage as { content?: string }).content || "Hello"
-      );
     }
 
     return this.createCompletionResponse(
@@ -148,60 +137,6 @@ export class OpenAIMock {
     };
   }
 
-  private createStreamResponse(userMessage: string): MockResponse {
-    const responseText = `Stream response to: "${userMessage}". This is streaming.`;
-    const chunks = responseText.split(" ").map(
-      (word, index) =>
-        ({
-          id: `chatcmpl-${Date.now()}`,
-          object: "chat.completion.chunk" as const,
-          created: Math.floor(Date.now() / 1000),
-          model,
-          choices: [
-            {
-              index: 0,
-              delta: {
-                content: index === 0 ? word : ` ${word}`,
-              },
-              finish_reason: null,
-            },
-          ],
-        } as ChatCompletionChunk)
-    );
-
-    // Add final chunk
-    chunks.push({
-      id: `chatcmpl-${Date.now()}`,
-      object: "chat.completion.chunk" as const,
-      created: Math.floor(Date.now() / 1000),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {},
-          finish_reason: "stop" as const,
-        },
-      ],
-    } as ChatCompletionChunk);
-
-    return {
-      type: "stream",
-      response: chunks,
-      delay: testConfig.mockDelay,
-    };
-  }
-
-  private async *createMockStream(
-    mockResponse: MockResponse
-  ): AsyncIterable<ChatCompletionChunk> {
-    const chunks = mockResponse.response as ChatCompletionChunk[];
-
-    for (const chunk of chunks) {
-      await this.simulateDelay(mockResponse.delay || 10);
-      yield chunk;
-    }
-  }
-
   private async simulateDelay(
     ms: number = testConfig.mockDelay
   ): Promise<void> {
@@ -221,12 +156,11 @@ export class OpenAIMock {
         model: request.model as string,
       },
       response: {
-        type: request.stream
-          ? "stream"
-          : (response as ChatCompletion).choices[0]?.finish_reason ===
-            "tool_calls"
-          ? "tool_call"
-          : "completion",
+        type:
+          (response as ChatCompletion).choices[0]?.finish_reason ===
+          "tool_calls"
+            ? "tool_call"
+            : "completion",
         response: response,
       },
       timestamp: new Date().toISOString(),

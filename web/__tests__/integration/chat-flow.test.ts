@@ -74,13 +74,6 @@ describe('Chat Flow Integration', () => {
     });
   });
 
-  describe('Streaming Responses', () => {
-    it('should simulate streaming in mock mode', async () => {
-      // This test can run in mock mode
-      expect(true).toBe(true);
-    });
-  });
-
   describe('Performance Benchmarks', () => {
     it('should complete simple queries quickly', async () => {
       if (!isIntegrationTest()) {
