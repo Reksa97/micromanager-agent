@@ -459,13 +459,14 @@ function StatusTickerSection({
   return (
     <div className="relative overflow-hidden">
       <div className="absolute inset-0 animate-gradient-slow bg-[linear-gradient(120deg,hsl(var(--primary)/0.2),hsl(var(--accent)/0.1),hsl(var(--secondary)/0.25))]" />
-      <div className="pointer-events-none absolute inset-x-0 top-[33%] h-[67%] animate-gradient-slow bg-[linear-gradient(300deg,hsl(var(--secondary)/0.35),hsl(var(--accent)/0.25),hsl(var(--primary)/0.35))]" />
+      <div className="pointer-events-none absolute inset-x-0 top-14 h-full animate-gradient-slow bg-[linear-gradient(300deg,hsl(var(--secondary)/0.35),hsl(var(--accent)/0.25),hsl(var(--primary)/0.35))]" />
       <div className="relative z-10 space-y-1 px-0 py-1">
-        <TickerRow label="User" text={userText} />
+        <TickerRow label="CMD" text={userText} className="text-nowrap" />
         <TickerRow
-          label="Micromanager"
+          label="MM"
           text={assistantText}
           direction="reverse"
+          className="text-wrap"
         />
         <TickerRow label="Tools" text="..." direction="reverse" />
       </div>
@@ -477,20 +478,26 @@ interface TickerRowProps {
   label: string;
   text: string;
   direction?: "forward" | "reverse";
+  className?: string;
 }
 
-function TickerRow({ label, text, direction = "forward" }: TickerRowProps) {
+function TickerRow({
+  label,
+  text,
+  direction = "forward",
+  className,
+}: TickerRowProps) {
   return (
     <div className="flex flex-col gap-1 px-4 py-4">
       <span
-        className={`text-[10px] h-4 font-semibold text-nowrap uppercase tracking-widest flex flex-row text-muted-foreground/80 ${
+        className={`text-[10px] min-h-4 font-semibold uppercase tracking-widest flex flex-row text-muted-foreground/80 ${className} ${
           direction === "reverse"
             ? "animate-slide-right justify-between"
             : "animate-slide-left gap-4"
         }`}
       >
         <div className={`mr-4`}>{label}</div>
-        <div className={`overflow-y- overflow-x-scroll h-4`}>{text}</div>
+        <div>{text}</div>
       </span>
     </div>
   );

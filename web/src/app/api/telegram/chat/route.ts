@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
     ];
 
     if (process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING) {
+      // Get your personal access token for Google Calendar
+      // 1. Visit https://developers.google.com/oauthplayground/
+      // 2. Input https://www.googleapis.com/auth/calendar.events as the required scope
+      // 3. Grab the acccess token starting with "ya29."
       console.log("Adding Google Calendar tool with test token");
       tools.push(
         hostedMcpTool({
