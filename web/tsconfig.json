@@ -19,10 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"],
-      "click-to-react-component-dev": [
-        "../lib/click-to-component-nextjs-app-router/apps/cra/node_modules/click-to-react-component/src/types.d.ts"
-      ]
+      "@/*": ["./src/*"]
     }
   },
   "include": [

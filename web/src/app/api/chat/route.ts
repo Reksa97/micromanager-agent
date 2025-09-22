@@ -6,267 +6,21 @@ import {
   insertMessage,
   getRecentMessages,
   updateMessage,
-  type StoredMessage,
 } from "@/lib/conversations";
 import { notifyTelegramUser } from "@/lib/telegram/bot";
-import { openai } from "@/lib/openai";
+import { OpenAIAgent, runOpenAIAgent } from "@/lib/openai";
 import { MODELS } from "@/lib/utils";
-import { normalizeToolArguments } from "@/lib/agent/context-tools";
+import { getUserContextDocument } from "@/lib/user-context";
+import { getWeatherTool } from "@/lib/agent/tools";
 import {
-  createServerContextToolset,
-  type ToolInvocationResult,
-} from "@/lib/agent/context-tools.server";
-import {
-  formatContextForPrompt,
-  getUserContextDocument,
-} from "@/lib/user-context";
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionMessageToolCall,
-  ChatCompletionTool,
-} from "openai/resources/chat/completions";
+  formatMicromanagerChatPrompt,
+  MICROMANAGER_CHAT_SYSTEM_PROMPT,
+} from "@/lib/agent/prompts";
+import { updateContextTool } from "@/lib/agent/tools.server";
 
 const requestSchema = z.object({
   message: z.string().min(1),
 });
-
-const STREAM_UPDATE_INTERVAL_MS = 1_000;
-const MAX_TOOL_ITERATIONS = 4;
-
-interface AggregatedToolCall {
-  id: string;
-  name: string;
-  arguments: string;
-}
-
-type StreamResult =
-  | {
-      kind: "assistant";
-      text: string;
-      finishReason?: string;
-    }
-  | {
-      kind: "tool_calls";
-      text: string;
-      toolCalls: AggregatedToolCall[];
-    };
-
-function toChatMessages(
-  history: StoredMessage[]
-): ChatCompletionMessageParam[] {
-  const messages: ChatCompletionMessageParam[] = [];
-  const toolResponseIds = new Set<string>();
-
-  for (const entry of history) {
-    if (entry.role !== "tool") continue;
-    const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
-    const toolCallId =
-      typeof metadata.toolCallId === "string" ? metadata.toolCallId : undefined;
-    if (toolCallId) {
-      toolResponseIds.add(toolCallId);
-    }
-  }
-
-  const pendingToolCalls = new Set<string>();
-  const deferredToolMessages = new Map<string, StoredMessage>();
-
-  for (const entry of history) {
-    const metadata = (entry.metadata ?? {}) as Record<string, unknown>;
-
-    if (entry.role === "tool") {
-      const toolCallId =
-        typeof metadata.toolCallId === "string"
-          ? metadata.toolCallId
-          : undefined;
-      if (!toolCallId) {
-        continue;
-      }
-      if (pendingToolCalls.has(toolCallId)) {
-        messages.push({
-          role: "tool",
-          content: entry.content,
-          tool_call_id: toolCallId,
-        });
-        pendingToolCalls.delete(toolCallId);
-        continue;
-      }
-      if (!deferredToolMessages.has(toolCallId)) {
-        deferredToolMessages.set(toolCallId, entry);
-      }
-      continue;
-    }
-
-    if (entry.role === "assistant" && Array.isArray(metadata.toolCalls)) {
-      const aggregatedToolCalls = (metadata.toolCalls as unknown[]).flatMap(
-        (item) => {
-          if (!item || typeof item !== "object") return [];
-          const tc = item as {
-            id?: unknown;
-            name?: unknown;
-            arguments?: unknown;
-          };
-          if (
-            typeof tc.id !== "string" ||
-            typeof tc.name !== "string" ||
-            typeof tc.arguments !== "string"
-          ) {
-            return [];
-          }
-          return [
-            {
-              id: tc.id,
-              name: tc.name,
-              arguments: tc.arguments,
-            },
-          ];
-        }
-      );
-
-      const executableToolCalls = aggregatedToolCalls.filter((call) =>
-        toolResponseIds.has(call.id)
-      );
-
-      if (executableToolCalls.length > 0) {
-        messages.push({
-          role: "assistant",
-          content: entry.content ?? "",
-          tool_calls: executableToolCalls.map<ChatCompletionMessageToolCall>(
-            (call) => ({
-              id: call.id,
-              type: "function",
-              function: {
-                name: call.name,
-                arguments: call.arguments,
-              },
-            })
-          ),
-        });
-        executableToolCalls.forEach((call) => {
-          pendingToolCalls.add(call.id);
-          const deferred = deferredToolMessages.get(call.id);
-          if (deferred) {
-            messages.push({
-              role: "tool",
-              content: deferred.content,
-              tool_call_id: call.id,
-            });
-            pendingToolCalls.delete(call.id);
-            deferredToolMessages.delete(call.id);
-          }
-        });
-        continue;
-      }
-    }
-
-    if (
-      entry.role === "assistant" ||
-      entry.role === "user" ||
-      entry.role === "system"
-    ) {
-      messages.push({
-        role: entry.role,
-        content: entry.content,
-      });
-    }
-  }
-
-  return messages;
-}
-
-async function streamChatCompletion({
-  messages,
-  tools,
-  assistantMessageId,
-}: {
-  messages: ChatCompletionMessageParam[];
-  tools: ChatCompletionTool[];
-  assistantMessageId: string;
-}): Promise<StreamResult> {
-  const stream = await openai.chat.completions.create({
-    model: MODELS.textBudget,
-    messages,
-    stream: true,
-    tools,
-    tool_choice: "auto",
-    parallel_tool_calls: false,
-  });
-
-  const toolCalls = new Map<number, AggregatedToolCall>();
-  let assistantFullText = "";
-  let finishReason: string | undefined;
-  let lastFlush = Date.now();
-
-  const flushUpdate = async (force = false) => {
-    const now = Date.now();
-    if (!force && now - lastFlush < STREAM_UPDATE_INTERVAL_MS) {
-      return;
-    }
-    lastFlush = now;
-    await updateMessage(assistantMessageId, {
-      content: assistantFullText,
-      metadata: { streaming: true },
-    });
-  };
-
-  for await (const chunk of stream) {
-    const choice = chunk.choices[0];
-    if (!choice) continue;
-    const delta = choice.delta;
-
-    if (delta?.content) {
-      assistantFullText += delta.content;
-      await flushUpdate();
-    }
-
-    if (Array.isArray(delta?.tool_calls)) {
-      for (const toolCallDelta of delta.tool_calls) {
-        const index = toolCallDelta.index ?? 0;
-        const existing = toolCalls.get(index) ?? {
-          id: "",
-          name: "",
-          arguments: "",
-        };
-        if (toolCallDelta.id) {
-          existing.id = toolCallDelta.id;
-        }
-        if (toolCallDelta.function?.name) {
-          existing.name = toolCallDelta.function.name;
-        }
-        if (toolCallDelta.function?.arguments) {
-          existing.arguments += toolCallDelta.function.arguments;
-        }
-        toolCalls.set(index, existing);
-      }
-    }
-
-    if (choice.finish_reason) {
-      finishReason = choice.finish_reason;
-    }
-  }
-
-  await flushUpdate(true);
-
-  if (finishReason === "tool_calls") {
-    const aggregated = Array.from(toolCalls.values()).map((call) => {
-      if (!call.id || !call.name) {
-        throw new Error("Incomplete tool call information received from model");
-      }
-      return call;
-    });
-
-    return {
-      kind: "tool_calls",
-      text: assistantFullText,
-      toolCalls: aggregated,
-    };
-  }
-
-  return {
-    kind: "assistant",
-    text: assistantFullText,
-    finishReason,
-  };
-}
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -286,40 +40,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const { message } = parseResult.data;
+  const { message: userMessage } = parseResult.data;
   const userId = session.user.id;
 
   let activeAssistantMessageId: string | null = null;
 
   try {
-    const [history, contextDoc] = await Promise.all([
-      getRecentMessages(userId, 40),
+    const [userMessageHistory, userContextDoc] = await Promise.all([
+      getRecentMessages(userId, 10),
       getUserContextDocument(userId),
     ]);
 
-    const contextPrompt = formatContextForPrompt(contextDoc);
-    const serverToolset = createServerContextToolset(userId);
-    const historyMessages = toChatMessages(history);
-
-    const conversation: ChatCompletionMessageParam[] = [
-      {
-        role: "system",
-        content:
-          "You are Micromanager, an operations-focused AI agent. Reference the user's saved context before answering, keep responses concise and actionable, and outline next steps when applicable.",
-      },
-      {
-        role: "system",
-        content: contextPrompt,
-      },
-      ...historyMessages,
-      { role: "user", content: message },
-    ];
-
-    const now = new Date();
+    let now = new Date();
     await insertMessage({
       userId,
       role: "user",
-      content: message,
+      content: userMessage,
       type: "text",
       source: "web-user",
       createdAt: now,
@@ -327,16 +63,19 @@ export async function POST(request: Request) {
     });
 
     // Try to notify Telegram user about the new message
-    notifyTelegramUser(userId, `💬 New message from web:\n\n${message}`).catch(
-      (error) => {
-        console.error("Failed to send Telegram notification:", error);
-      }
-    );
+    notifyTelegramUser(
+      userId,
+      `💬 New message from web:\n\n${userMessage}`
+    ).catch((error) => {
+      console.error("Failed to send Telegram notification:", error);
+    });
 
-    const assistantPlaceholderId = await insertMessage({
+    now = new Date();
+
+    activeAssistantMessageId = await insertMessage({
       userId,
       role: "assistant",
-      content: "",
+      content: "Processing...",
       type: "text",
       source: "micromanager",
       createdAt: now,
@@ -344,144 +83,53 @@ export async function POST(request: Request) {
       metadata: { streaming: true },
     });
 
-    activeAssistantMessageId = assistantPlaceholderId;
+    const model = MODELS.text;
+    const micromanagerAgentPrompt = formatMicromanagerChatPrompt({
+      userContextDoc,
+      userMessageHistory,
+      userMessage,
+    });
 
-    let messagesForModel = conversation;
-    let currentAssistantId = assistantPlaceholderId;
+    const agent = new OpenAIAgent({
+      name: "micromanager",
+      instructions: MICROMANAGER_CHAT_SYSTEM_PROMPT,
+      model,
+      tools: [
+        getWeatherTool,
+        //getContextTool(userId), Context is included in the system prompt
+        updateContextTool(userId),
+      ],
+    });
 
-    for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
-      const result = await streamChatCompletion({
-        messages: messagesForModel,
-        tools: serverToolset.tools,
-        assistantMessageId: currentAssistantId,
-      });
+    const agentResult = await runOpenAIAgent(agent, micromanagerAgentPrompt);
 
-      if (result.kind === "assistant") {
-        const finalContent = result.text.trim();
-        await updateMessage(currentAssistantId, {
-          content: finalContent,
-          metadata: { streaming: false },
-          type: "text",
-        });
+    console.log("Agent result", {
+      model,
+      newItems: agentResult.newItems,
+      activeAssistantMessageId,
+      micromanagerAgentPrompt,
+    });
 
-        // Try to notify Telegram user about the assistant response
-        notifyTelegramUser(
-          userId,
-          `🤖 Assistant response:\n\n${finalContent}`
-        ).catch((error) => {
-          console.error("Failed to send Telegram notification:", error);
-        });
+    const finalContent =
+      agentResult.finalOutput?.trim() ?? "No final output from agent";
+    await updateMessage(activeAssistantMessageId, {
+      content: finalContent,
+      metadata: { streaming: false },
+      type: "text",
+    });
 
-        return NextResponse.json({
-          messageId: currentAssistantId,
-          content: finalContent,
-        });
-      }
+    // Try to notify Telegram user about the assistant response
+    notifyTelegramUser(
+      userId,
+      `🤖 Assistant response:\n\n${finalContent}`
+    ).catch((error) => {
+      console.error("Failed to send Telegram notification:", error);
+    });
 
-      // Tool calls branch
-      const assistantSummary = result.text.trim();
-      await updateMessage(currentAssistantId, {
-        content: assistantSummary,
-        metadata: {
-          streaming: false,
-          toolCalls: result.toolCalls,
-        },
-        type: "state",
-      });
-
-      const assistantToolMessage: ChatCompletionMessageParam = {
-        role: "assistant",
-        content: assistantSummary,
-        tool_calls: result.toolCalls.map<ChatCompletionMessageToolCall>(
-          (call) => ({
-            id: call.id,
-            type: "function",
-            function: {
-              name: call.name,
-              arguments: call.arguments,
-            },
-          })
-        ),
-      };
-
-      messagesForModel = [...messagesForModel, assistantToolMessage];
-
-      for (const call of result.toolCalls) {
-        let handlerResult: ToolInvocationResult | null = null;
-        let parsedArgs: unknown;
-        let toolError: Error | null = null;
-
-        try {
-          parsedArgs = normalizeToolArguments(call.arguments);
-          const handler = serverToolset.handlers.get(call.name);
-          if (!handler) {
-            throw new Error(`Tool ${call.name} is not available.`);
-          }
-          handlerResult = await handler(parsedArgs);
-        } catch (error) {
-          toolError = error instanceof Error ? error : new Error(String(error));
-        }
-
-        const toolContent = toolError
-          ? `Unable to execute ${call.name}: ${toolError.message}`
-          : handlerResult?.output ?? `Tool ${call.name} completed.`;
-
-        messagesForModel = [
-          ...messagesForModel,
-          {
-            role: "tool",
-            content: toolContent,
-            tool_call_id: call.id,
-          },
-        ];
-
-        await insertMessage({
-          userId,
-          role: "tool",
-          content: toolContent,
-          type: "tool",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          metadata: {
-            toolCallId: call.id,
-            toolName: call.name,
-            arguments: parsedArgs,
-            ...(handlerResult?.metadata ?? {}),
-            ...(toolError
-              ? {
-                  error: toolError.message,
-                }
-              : {}),
-          },
-        });
-      }
-
-      // Prepare new assistant placeholder for the follow-up response
-      const nextAssistantId = await insertMessage({
-        userId,
-        role: "assistant",
-        content: "",
-        type: "text",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        metadata: { streaming: true },
-      });
-
-      currentAssistantId = nextAssistantId;
-      activeAssistantMessageId = nextAssistantId;
-    }
-
-    const fallbackMessage =
-      "Tool loop limit reached before producing a final response.";
-    if (activeAssistantMessageId) {
-      await updateMessage(activeAssistantMessageId, {
-        content: fallbackMessage,
-        metadata: { streaming: false, error: fallbackMessage },
-        type: "text",
-      });
-    }
-
-    return NextResponse.json({ error: fallbackMessage }, { status: 500 });
+    return NextResponse.json({
+      messageId: activeAssistantMessageId,
+      content: finalContent,
+    });
   } catch (error) {
     console.error("Failed to generate assistant response", error);
     const err = error instanceof Error ? error : new Error(String(error));

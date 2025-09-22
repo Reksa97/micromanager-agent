@@ -52,14 +52,7 @@ export function TelegramChatPanel({
         const mapped = incoming.map<StoredMessage>((message) => {
           const createdAtIso = message.createdAt ?? new Date().toISOString();
           const createdDate = new Date(createdAtIso);
-          const type: StoredMessage["type"] =
-            message.kind === "tool"
-              ? "tool"
-              : message.kind === "state"
-              ? "state"
-              : message.kind === "audio"
-              ? "audio"
-              : "text";
+          const type: StoredMessage["type"] = "text";
 
           return {
             id: message.id,
@@ -133,27 +126,6 @@ export function TelegramChatPanel({
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
       if (message.role === "assistant") {
-        return message.content;
-      }
-    }
-    return null;
-  }, [messages]);
-
-  const lastReasoningSnippet = useMemo(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      const reasoning = message.metadata?.reasoning;
-      if (typeof reasoning === "string" && reasoning.trim().length > 0) {
-        return reasoning.trim();
-      }
-    }
-    return null;
-  }, [messages]);
-
-  const lastToolMessage = useMemo(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      if (message.role === "tool" || message.type === "tool") {
         return message.content;
       }
     }
@@ -448,11 +420,6 @@ export function TelegramChatPanel({
             assistantText={
               lastAssistantMessage ?? DEFAULT_TICKER_CONTENT.assistant
             }
-            toolText={
-              lastToolMessage ??
-              lastReasoningSnippet ??
-              DEFAULT_TICKER_CONTENT.tools
-            }
           />
           <DefaultConfigSquare />
         </div>
@@ -483,13 +450,11 @@ function DefaultConfigSquare() {
 interface StatusTickerSectionProps {
   userText: string;
   assistantText: string;
-  toolText: string;
 }
 
 function StatusTickerSection({
   userText,
   assistantText,
-  toolText,
 }: StatusTickerSectionProps) {
   return (
     <div className="relative overflow-hidden">
@@ -502,7 +467,7 @@ function StatusTickerSection({
           text={assistantText}
           direction="reverse"
         />
-        <TickerRow label="Tools" text={toolText} direction="reverse" />
+        <TickerRow label="Tools" text="..." direction="reverse" />
       </div>
     </div>
   );

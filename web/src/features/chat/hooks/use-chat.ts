@@ -48,9 +48,6 @@ export function useChat({ onError }: UseChatOptions = {}) {
       }
 
       try {
-        if (process.env.NODE_ENV === "development") {
-          console.debug("[chat] refreshing history", new Date().toISOString());
-        }
         const response = await fetch("/api/chat", { cache: "no-store" });
         if (!response.ok) {
           throw new Error("Failed to load chat history");
@@ -64,11 +61,15 @@ export function useChat({ onError }: UseChatOptions = {}) {
             content: msg.content,
             kind: msg.type ?? "text",
             createdAt: msg.createdAt,
-            streaming: Boolean((msg.metadata as { streaming?: boolean } | undefined)?.streaming),
-            error: typeof (msg.metadata as { error?: string } | undefined)?.error === "string"
-              ? (msg.metadata as { error?: string }).error
-              : undefined,
-          })),
+            streaming: Boolean(
+              (msg.metadata as { streaming?: boolean } | undefined)?.streaming
+            ),
+            error:
+              typeof (msg.metadata as { error?: string } | undefined)?.error ===
+              "string"
+                ? (msg.metadata as { error?: string }).error
+                : undefined,
+          }))
         );
       } catch (error) {
         console.error(error);
@@ -78,7 +79,7 @@ export function useChat({ onError }: UseChatOptions = {}) {
         isFetchingRef.current = false;
       }
     },
-    [],
+    []
   );
 
   useEffect(() => {
@@ -87,7 +88,10 @@ export function useChat({ onError }: UseChatOptions = {}) {
 
   useEffect(() => {
     const hasStreamingMessages = messages.some((msg) => msg.streaming);
-    const pollInterval = isStreaming || hasStreamingMessages ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
+    const pollInterval =
+      isStreaming || hasStreamingMessages
+        ? ACTIVE_POLL_INTERVAL_MS
+        : IDLE_POLL_INTERVAL_MS;
 
     const interval = setInterval(() => {
       loadHistory({ showLoader: false });
@@ -139,7 +143,10 @@ export function useChat({ onError }: UseChatOptions = {}) {
 
         if (!response.ok) {
           const errorBody = await response.json().catch(() => null);
-          throw new Error((errorBody as { error?: string } | null)?.error ?? "Failed to send message");
+          throw new Error(
+            (errorBody as { error?: string } | null)?.error ??
+              "Failed to send message"
+          );
         }
       } catch (error) {
         console.error(error);
@@ -153,8 +160,8 @@ export function useChat({ onError }: UseChatOptions = {}) {
                   error: err.message,
                   content: msg.content || "Something went wrong.",
                 }
-              : msg,
-          ),
+              : msg
+          )
         );
         onErrorRef.current?.(err);
       } finally {
@@ -163,7 +170,7 @@ export function useChat({ onError }: UseChatOptions = {}) {
         void loadHistory({ showLoader: false });
       }
     },
-    [isStreaming, loadHistory],
+    [isStreaming, loadHistory]
   );
 
   return {

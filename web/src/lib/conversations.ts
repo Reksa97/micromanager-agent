@@ -18,7 +18,7 @@ export interface StoredMessage {
   content: string;
   createdAt: Date;
   updatedAt: Date;
-  type: "text" | "tool" | "state" | "audio";
+  type: "text";
   source?: MessageSource;
   metadata?: Record<string, unknown>;
   telegramChatId?: number | string;

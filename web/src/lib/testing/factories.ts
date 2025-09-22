@@ -64,41 +64,6 @@ export class TestFactory {
     return messages;
   }
 
-  static createToolCallMessage(
-    toolName: string,
-    args: Record<string, unknown> = {}
-  ): StoredMessage {
-    return TestFactory.createMessage({
-      role: "assistant",
-      content: "",
-      type: "state",
-      metadata: {
-        toolCalls: [
-          {
-            id: `call_${++idCounter}`,
-            name: toolName,
-            arguments: JSON.stringify(args),
-          },
-        ],
-      },
-    });
-  }
-
-  static createToolResultMessage(
-    toolCallId: string,
-    result: string
-  ): StoredMessage {
-    return TestFactory.createMessage({
-      role: "tool",
-      content: result,
-      type: "tool",
-      metadata: {
-        toolCallId,
-        toolName: "test_tool",
-      },
-    });
-  }
-
   static createUserContext(
     overrides: Partial<UserContextDocument["data"]> = {}
   ): UserContextDocument {
