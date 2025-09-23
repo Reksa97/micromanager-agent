@@ -8,6 +8,8 @@ const serverSchema = z.object({
   OPENAI_PROJECT: z.string().optional(),
   ALLOW_USER_REGISTRATION: z.boolean(),
   TELEGRAM_DEV_MOCK_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional()
 });
 
 const resolvedAuthSecret =
@@ -35,6 +37,12 @@ if (
   );
 }
 
+if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  console.warn(
+    "GOOGLE_CLIENT_ID and/or GOOGLE_CLIENT_SECRET missing. Google oAuth authentication will not be possible."
+  )
+}
+
 export const env = serverSchema.parse({
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   MONGODB_URI: resolvedMongoUri,
@@ -43,4 +51,6 @@ export const env = serverSchema.parse({
   OPENAI_PROJECT: process.env.OPENAI_PROJECT,
   ALLOW_USER_REGISTRATION: allowUserRegistration,
   TELEGRAM_DEV_MOCK_SECRET: process.env.TELEGRAM_DEV_MOCK_SECRET,
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET
 });
