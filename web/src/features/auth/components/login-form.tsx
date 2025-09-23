@@ -24,56 +24,62 @@ export function LoginForm() {
   }, [defaultEmail]);
 
   return (
-    <form
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        startTransition(async () => {
-          const payloadEmail = email.trim();
-          const result = await signIn("credentials", {
-            email: payloadEmail,
-            password: password.trim(),
-            redirect: false,
+    <div>
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          startTransition(async () => {
+            const payloadEmail = email.trim();
+            const result = await signIn("credentials", {
+              email: payloadEmail,
+              password: password.trim(),
+              redirect: false,
+            });
+            if (result?.error) {
+              toast.error("Invalid email or password");
+              return;
+            }
+            router.push("/");
+            router.refresh();
           });
-          if (result?.error) {
-            toast.error("Invalid email or password");
-            return;
-          }
-          router.push("/");
-          router.refresh();
-        });
-      }}
-    >
-      <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          placeholder="you@company.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          placeholder="••••••••"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
-      </div>
-      <Button type="submit" className="w-full gap-2" disabled={isPending}>
-        {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
-        Sign in
-      </Button>
-    </form>
+        }}
+      >
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@company.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </div>
+        <div className="flex space-x-2">
+          <Button type="submit" className="w-full gap-2" disabled={isPending}>
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+            Sign in
+          </Button>
+          <Button type="button" onClick={() => signIn("google")}>Sign in with Google</Button>
+        </div>
+      </form>
+      
+    </div>
   );
 }

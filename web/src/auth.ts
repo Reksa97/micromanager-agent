@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
 import type { User } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
@@ -76,14 +77,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         } satisfies Partial<User> as User;
       },
     }),
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope:
+            "openid email profile https://www.googleapis.com/auth/calendar",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         const typedUser = user as User;
         token.sub = typedUser.id;
         (token as JWT).tier = typedUser.tier ?? "free";
       }
+
+      if (account?.provider === "google") {
+        token.googleAccessToken = account.access_token;
+        token.googleRefreshToken = account.refresh_token;
+        token.googleExpires = Date.now() + (account.expires_in ?? 0) * 1000;
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -91,6 +111,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.sub;
         session.user.tier = (token as JWT).tier ?? "free";
       }
+
+      if (token.googleAccessToken) {
+        session.googleAccessToken = token.googleAccessToken;
+      }
+
       return session;
     },
   },

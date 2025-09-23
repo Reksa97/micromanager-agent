@@ -14,11 +14,17 @@ declare module "next-auth" {
       image?: string | null;
       tier?: "free" | "paid" | "admin";
     };
+    googleAccessToken?: string | null;
+    googleRefreshToken?: string | null;
+    googleExpires?: number | null;
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
     tier?: "free" | "paid" | "admin";
+    googleAccessToken?: string | null;
+    googleRefreshToken?: string | null;
+    googleExpires?: number | null;
   }
 }
