@@ -6,6 +6,7 @@ import type { JWT } from "next-auth/jwt";
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
+import { google } from "googleapis";
 
 import { env } from "@/env";
 import clientPromise from "@/lib/db";
@@ -26,6 +27,33 @@ type AdapterUser = {
   password?: string | null;
   tier?: "free" | "paid" | "admin";
 };
+
+async function refreshGoogleAccessToken(token: any) {
+  try {
+    const oAuth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+
+    oAuth2Client.setCredentials({
+      refresh_token: token.googleRefreshToken,
+    });
+
+    const { credentials } = await oAuth2Client.refreshAccessToken();
+
+    return {
+      ...token,
+      googleAccessToken: credentials.access_token,
+      googleExpires: Date.now() + (credentials.expiry_date ?? 0) - Date.now(),
+    };
+  } catch (error) {
+    console.error("Error refreshing Google access token", error);
+    return {
+      ...token,
+      error: "RefreshAccessTokenError",
+    };
+  }
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   debug: process.env.NODE_ENV === "development",
@@ -102,6 +130,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.googleAccessToken = account.access_token;
         token.googleRefreshToken = account.refresh_token;
         token.googleExpires = Date.now() + (account.expires_in ?? 0) * 1000;
+
+        return token
+      }
+
+      if (token.googleExpires && Date.now() > token.googleExpires) {
+        console.log("Access token expired, refreshing...");
+        token = await refreshGoogleAccessToken(token);
       }
 
       return token;
@@ -112,9 +147,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.tier = (token as JWT).tier ?? "free";
       }
 
-      if (token.googleAccessToken) {
-        session.googleAccessToken = token.googleAccessToken;
-      }
+      session.googleAccessToken = token.googleAccessToken ?? session.googleAccessToken;
+      session.googleRefreshToken = token.googleRefreshToken ?? session.googleRefreshToken;
+      session.googleExpires = token.googleExpires ?? session.googleExpires;
 
       return session;
     },

@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     });
 
     const model = MODELS.text;
-    const tools = getBackendTools(userId);
+    const tools = getBackendTools(userId, session.googleAccessToken);
     const micromanagerAgentPrompt = formatMicromanagerChatPrompt({
       userContextDoc,
       userMessageHistory,
