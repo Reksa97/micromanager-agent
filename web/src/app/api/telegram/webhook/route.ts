@@ -46,7 +46,7 @@ async function setupBot() {
         `Welcome ${firstName}! 👋\n\n` +
           `I'm your Micromanager Agent assistant. You can:\n` +
           `• Send me messages and I'll help you\n` +
-          `• Use /link <code> to link your web account\n` +
+          `• Use /link YOUR_CODE to link your web account\n` +
           `• Open the Mini App for a richer experience\n\n` +
           `How can I assist you today?`,
         { parse_mode: "HTML" }
