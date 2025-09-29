@@ -5,6 +5,7 @@ import {
   upsertTelegramUser,
   getTelegramUserByTelegramId,
 } from "@/lib/telegram/bot";
+import { initData } from "@telegram-apps/sdk-react";
 import { insertMessage } from "@/lib/conversations";
 import { OpenAI } from "openai";
 import { MODELS } from "@/lib/utils";
@@ -101,22 +102,34 @@ async function setupBot() {
       await ctx.replyWithChatAction("typing");
 
       try {
-        const completion = await openai.chat.completions.create({
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a helpful assistant for the Micromanager Agent platform. Keep responses concise and helpful.",
-            },
-            { role: "user", content: text },
-          ],
-          model: MODELS.textBudget,
-          max_completion_tokens: 500,
+        const authResponse = await fetch(`/api/auth/telegram`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initData }),
         });
 
-        const aiResponse =
-          completion.choices[0].message.content ||
-          "I couldn't generate a response.";
+        if (!authResponse.ok) {
+          throw new Error(`Auth failed with ${authResponse.status}`);
+        }
+
+        const { token } = await authResponse.json();
+
+        const response = await fetch(`/api/telegram/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            message: text,
+            source: "telegram",
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Chat API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        const aiResponse = data.reply || "I couldn't generate a response.";
 
         await insertMessage({
           userId,
