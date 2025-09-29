@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/auth";
+import { auth, unstable_update } from "@/auth";
 import {
   insertMessage,
   getRecentMessages,
@@ -26,6 +26,7 @@ export async function POST(request: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await unstable_update({ ...session })
 
   const json = await request.json().catch(() => null);
   const parseResult = requestSchema.safeParse(json);
@@ -147,6 +148,7 @@ export async function GET() {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await unstable_update({ ...session })
 
   const messages = await getRecentMessages(session.user.id, 100);
   return NextResponse.json({ messages });
