@@ -37,11 +37,11 @@ Open your Telegram bot chat and open the Mini App -> Right Click -> Inspect Elem
 
 ### Google Calendar
 
-1. Create a new project in [Google Cloud Console](https://console.cloud.google.com/) and enable oAuth 2.0. 
-2. Create a new client for the project and save the client ID and secret. 
-3. Set envirnoment variables `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` with the id and secret respectively.
+1. Create a new project in [Google Cloud Console](https://console.cloud.google.com/) and enable Google Auth Platform.
+2. Create a new client for the project and save the client ID and secret. Authorized redirect URI for dev is `https://localhost:3000/api/auth/callback/google`, and authorized javascript origin is `https://localhost:3000`
+3. Set environment variables `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` with the id and secret respectively.
 4. When project publishing status is "Testing", emails need to be added as test users on the "Audience" screen to allow them to authenticate. After the project is "Published", this will not be necessary.
-
+5. Enable Google Calendar API
 
 ## Deployment
 
