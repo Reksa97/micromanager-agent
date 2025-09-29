@@ -58,14 +58,23 @@ export const updateContextTool = (userId: string) =>
     },
   });
 
-export const getBackendTools = (userId: string) => {
+export const getBackendTools = (userId: string, googleAccessToken: string | null | undefined) => {
   const tools: Tool[] = [
     getWeatherTool,
     // getContextTool(userId), Context is included in the system prompt
     updateContextTool(userId),
   ];
-
-  if (process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING) {
+  if (googleAccessToken) {
+    console.log("Adding Google Calendar tool with authenticated user's token");
+    tools.push(
+      hostedMcpTool({
+        serverLabel: "google_calendar",
+        connectorId: "connector_googlecalendar",
+        requireApproval: "never",
+        authorization: googleAccessToken,
+      })
+    );
+  } else if (process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING) {
     // https://platform.openai.com/docs/guides/tools-connectors-mcp
     // https://openai.github.io/openai-agents-js/guides/mcp/
     // Get your personal access token for Google Calendar
