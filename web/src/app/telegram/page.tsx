@@ -293,7 +293,7 @@ export default function TelegramLoginPage() {
         );
 
         // Authenticate with backend
-        const response = await fetch(`${process.env.APP_URL}/api/auth/telegram`, {
+        const response = await fetch("/api/auth/telegram", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
