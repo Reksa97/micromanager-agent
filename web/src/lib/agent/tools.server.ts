@@ -5,6 +5,9 @@ import {
   updateUserContextDocument,
 } from "../user-context";
 import { getWeatherTool } from "./tools";
+import { Session } from "next-auth";
+import { createEvent } from "../google-calendar";
+import { auth } from "@/auth";
 
 export const getContextTool = (userId: string) =>
   tool({
@@ -58,7 +61,58 @@ export const updateContextTool = (userId: string) =>
     },
   });
 
-export const getBackendTools = (userId: string, googleAccessToken: string | null | undefined) => {
+export const createCalendarEventTool = (googleAccessToken: string) => 
+  tool({
+    name: "create_calendar_event",
+    description: "Create a new calendar event using Google Calendar API",
+    parameters: z.object({
+      event: z.object({
+        summary: z.string(),
+        location: z.string().nullable(),
+        description: z.string().nullable(),
+        start: z.object({
+          dateTime: z.string().regex(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/,
+            "Must be in format YYYY-MM-DDTHH:mm:ss without timezone offset"
+          ),
+          timeZone: z.string(),
+        }),
+        end: z.object({
+          dateTime: z.string().regex(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/,
+            "Must be in format YYYY-MM-DDTHH:mm:ss without timezone offset"
+          ),
+          timeZone: z.string(),
+        }),
+        recurrence: z.array(z.string().regex(
+          /^RRULE:(?:[^;]+=[^;]+;?)+$/i, 
+          "Invalid RRULE format. Must start with 'RRULE:' and follow RFC 5545 (e.g., RRULE:FREQ=DAILY;COUNT=2)."
+        )).nullable(),
+        attendees: z.array(
+          z.object({email: z.string().email()}) 
+        ),
+        reminders: z.object({
+          useDefault: z.boolean(),
+          overrides: z.array(
+            z.object({ method: z.enum(['email', 'popup']), minutes: z.number().gt(0).lt(40320) }),
+          ).max(5),
+        }),
+      })
+    }),
+    async execute({ event }) {
+      try {
+        const link = await createEvent(googleAccessToken, event)
+        return `A new event was created in the google calendar. Link to the event: ${link}`
+      } catch (error) {
+        console.log('Failed to create a new calendar event', error);
+        return `Failed to create a new calendar event: ${
+          error instanceof Error ? error.message : "Unkown error"
+        }`;
+      }
+    }
+  });
+
+export const getBackendTools = (userId: string, googleAccessToken: string | null | undefined = undefined) => {
   const tools: Tool[] = [
     getWeatherTool,
     // getContextTool(userId), Context is included in the system prompt
@@ -74,6 +128,7 @@ export const getBackendTools = (userId: string, googleAccessToken: string | null
         authorization: googleAccessToken,
       })
     );
+    tools.push(createCalendarEventTool(googleAccessToken));
   } else if (process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING) {
     // https://platform.openai.com/docs/guides/tools-connectors-mcp
     // https://openai.github.io/openai-agents-js/guides/mcp/
@@ -90,6 +145,7 @@ export const getBackendTools = (userId: string, googleAccessToken: string | null
         authorization: process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING,
       })
     );
+    tools.push(createCalendarEventTool(process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING));
   }
   return tools;
 };
