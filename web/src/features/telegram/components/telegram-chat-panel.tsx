@@ -294,7 +294,8 @@ export function TelegramChatPanel({
       if (isVoiceActive) {
         await realtime.stopSession();
       } else {
-        await realtime.startSession();
+        const mcpAuthorization = undefined; // TODO get mcp token (timeboxed for one session) from backend, for now just use the user id
+        await realtime.startSession(userId, mcpAuthorization);
       }
     } catch (err) {
       const message =

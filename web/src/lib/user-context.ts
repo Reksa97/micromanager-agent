@@ -45,13 +45,21 @@ export async function updateUserContextDocument(
     {
       $set: {
         ...contextUpdates.reduce((acc, update) => {
-          const fullPath = `data.${update.path}`;
-          acc[fullPath] = update.value;
-          if (update.value === undefined) {
-            acc[fullPath] = null;
+          if (update.value !== undefined) {
+            const fullPath = `data.${update.path}`;
+            acc[fullPath] = update.value;
           }
           return acc;
         }, {} as Record<string, unknown>),
+      },
+      $unset: {
+        ...contextUpdates.reduce((acc, update) => {
+          const fullPath = `data.${update.path}`;
+          if (update.value === undefined) {
+            acc[fullPath] = "";
+          }
+          return acc;
+        }, {} as Record<string, "">),
       },
     },
     { returnDocument: "after" }

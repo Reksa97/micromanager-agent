@@ -10,6 +10,7 @@ import {
 } from "@/lib/agent/prompts";
 import { getUserContextDocument } from "@/lib/user-context";
 import { getBackendTools } from "@/lib/agent/tools.server";
+import { getUserById } from "@/lib/user";
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const user = await getUserById(userId);
+    const userTier = user?.tier;
+
     // Store user message
     await insertMessage({
       userId,
@@ -50,8 +54,10 @@ export async function POST(req: NextRequest) {
       getUserContextDocument(userId),
     ]);
 
-    const model = MODELS.textBudget;
-    const tools = getBackendTools(userId);
+    const model = userTier === "paid" ? MODELS.text : MODELS.textBudget;
+    const tools = getBackendTools(userId, undefined);
+
+    console.log("Calling agent", { userId, userTier, model });
 
     const agent = new OpenAIAgent({
       name: "micromanager",
@@ -72,9 +78,12 @@ export async function POST(req: NextRequest) {
 
     console.log("Telegram Agent result", {
       model,
-      response,
-      newItems: agentResult.newItems,
       micromanagerAgentPrompt,
+      response:
+        response.length > 100 ? response.slice(0, 100) + "..." : response,
+      newItems: agentResult.newItems.map(
+        (item) => `${item.type}: ${JSON.stringify(item.rawItem.providerData)}`
+      ),
     });
 
     // Store assistant response

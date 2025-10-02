@@ -5,6 +5,7 @@ import { SignJWT } from "jose";
 import { env } from "@/env";
 import { getMongoClient } from "@/lib/db";
 import { upsertTelegramUser } from "@/lib/telegram/bot";
+import { getUserByTelegramId } from "@/lib/user";
 
 interface TelegramAuthUser {
   id: number;
@@ -36,8 +37,13 @@ export async function POST(req: NextRequest) {
     };
 
     // Block any mock authentication attempts in production immediately
-    if (process.env.NODE_ENV === "production" && (body.mockSecret || body.mockUser)) {
-      console.error("[Telegram Auth API] Mock authentication attempt blocked in production");
+    if (
+      process.env.NODE_ENV === "production" &&
+      (body.mockSecret || body.mockUser)
+    ) {
+      console.error(
+        "[Telegram Auth API] Mock authentication attempt blocked in production"
+      );
       return NextResponse.json(
         { error: "Mock authentication is completely disabled in production" },
         { status: 403 }
@@ -49,7 +55,8 @@ export async function POST(req: NextRequest) {
     const mockUser = (body.mockUser ?? null) as MockTelegramUserPayload | null;
     const devMockSecret = env.TELEGRAM_DEV_MOCK_SECRET;
 
-    const isMockMode = mockSecret === devMockSecret && process.env.NODE_ENV !== "production";
+    const isMockMode =
+      mockSecret === devMockSecret && process.env.NODE_ENV !== "production";
 
     console.log("[Telegram Auth API] Received authentication request", {
       isMockMode,
@@ -227,9 +234,7 @@ export async function POST(req: NextRequest) {
       "[Telegram Auth API] Looking up user with Telegram ID:",
       telegramUser.id
     );
-    const existingUser = await usersCollection.findOne({
-      telegramId: telegramUser.id,
-    });
+    const existingUser = await getUserByTelegramId(telegramUser.id);
 
     let userId: string;
     let userTier: string;

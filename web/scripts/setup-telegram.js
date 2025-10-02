@@ -107,9 +107,8 @@ async function setupTelegram() {
 
   console.log('\n🎉 Telegram bot setup complete!');
   console.log('\n📱 Next steps:');
-  console.log('   1. Message your bot on Telegram to test it');
-  console.log('   2. Click the menu button to open the Mini App');
-  console.log('   3. Use /link command to connect your account');
+  console.log('   1. Message your bot on Telegram to see the bot respond');
+  console.log('   2. Click the menu button to open the web Mini App');
 }
 
 setupTelegram().catch(console.error);

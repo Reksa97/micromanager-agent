@@ -17,10 +17,10 @@ import { VoiceVisualizer } from "@/features/chat/components/voice-visualizer";
 import type { ChatMessage } from "@/features/chat/types";
 
 interface ChatPanelProps {
-  telegramMode?: boolean;
+  userId: string;
 }
 
-export function ChatPanel({}: ChatPanelProps) {
+export function ChatPanel({ userId }: ChatPanelProps) {
   const [input, setInput] = useState("");
 
   const { messages, isSending, isLoadingHistory, sendMessage } = useChat({
@@ -119,7 +119,7 @@ export function ChatPanel({}: ChatPanelProps) {
           isVoiceActive={realtime.isVoiceActive}
           startSession={async () => {
             try {
-              await realtime.startSession();
+              await realtime.startSession(userId);
             } catch {
               // handled by hook toast
             }

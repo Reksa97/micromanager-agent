@@ -28,7 +28,7 @@ type AdapterUser = {
   tier?: "free" | "paid" | "admin";
 };
 
-async function refreshGoogleAccessToken(token: any) {
+async function refreshGoogleAccessToken(token: JWT) {
   try {
     const oAuth2Client = new google.auth.OAuth2(
       env.GOOGLE_CLIENT_ID,
@@ -45,7 +45,7 @@ async function refreshGoogleAccessToken(token: any) {
       googleAccessToken: credentials.access_token,
       googleRefreshToken: credentials.refresh_token ?? token.googleRefreshToken,
       googleExpires: credentials.expiry_date ?? Date.now() + 3600 * 1000,
-      error: undefined
+      error: undefined,
     };
   } catch (error) {
     console.error("Error refreshing Google access token", error);
@@ -126,16 +126,20 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         token.sub = typedUser.id;
         (token as JWT).tier = typedUser.tier ?? "free";
 
-
         if (account.provider === "google") {
           token.googleAccessToken = account.access_token;
-          token.googleRefreshToken = account.refresh_token ?? token.googleRefreshToken;
+          token.googleRefreshToken =
+            account.refresh_token ?? token.googleRefreshToken;
           token.googleExpires = Date.now() + (account.expires_in ?? 0) * 1000;
-          return token
+          return token;
         }
       }
 
-      console.log(`Token expires in: ${ ((token.googleExpires ?? 0) - Date.now())/60000 } minutes`)
+      console.log(
+        `Token expires in: ${
+          ((token.googleExpires ?? 0) - Date.now()) / 60000
+        } minutes`
+      );
 
       if (token.googleExpires && Date.now() < token.googleExpires - 60 * 1000) {
         return token;
