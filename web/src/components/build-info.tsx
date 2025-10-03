@@ -6,10 +6,9 @@ import { GitBranch, Clock, Code, ChevronDown, ChevronUp } from "lucide-react";
 
 interface BuildInfoProps {
   className?: string;
-  variant?: "compact" | "detailed";
 }
 
-export function BuildInfo({ className, variant = "compact" }: BuildInfoProps) {
+export function BuildInfo({ className }: BuildInfoProps) {
   const [expanded, setExpanded] = useState(false);
 
   const gitHash = process.env.NEXT_PUBLIC_GIT_HASH ?? "dev";
@@ -35,7 +34,7 @@ export function BuildInfo({ className, variant = "compact" }: BuildInfoProps) {
 
   const timeAgo = formatBuildTime(buildTime);
 
-  if (variant === "compact") {
+  if (!expanded) {
     return (
       <div
         className={cn(
@@ -52,11 +51,15 @@ export function BuildInfo({ className, variant = "compact" }: BuildInfoProps) {
         <span>{gitHash}</span>
         <span className="text-muted-foreground/50">•</span>
         <span>{timeAgo}</span>
-        {expanded ? (
-          <ChevronUp className="h-3 w-3" />
-        ) : (
-          <ChevronDown className="h-3 w-3" />
+        {buildEnv === "development" && (
+          <>
+            <span className="text-muted-foreground/50">•</span>
+            <span className={cn("font-mono", "text-yellow-600")}>
+              {buildEnv}
+            </span>
+          </>
         )}
+        <ChevronDown className="h-3 w-3" />
       </div>
     );
   }
@@ -96,6 +99,8 @@ export function BuildInfo({ className, variant = "compact" }: BuildInfoProps) {
         >
           {buildEnv}
         </span>
+
+        <ChevronUp className="h-3 w-3" onClick={() => setExpanded(!expanded)} />
       </div>
     </div>
   );

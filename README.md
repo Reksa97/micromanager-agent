@@ -35,6 +35,14 @@ In Telegram BotFather app -> Select your bot -> Settings -> Mini Apps -> Menu Bu
 
 Open your Telegram bot chat and open the Mini App -> Right Click -> Inspect Element
 
+#### Telegram Webhook
+
+Run the following to setup the mini-app, and allow Telegram to send user messages to your API
+
+```
+npm run setup-telegram -- https://yoursubdomain.vercel.app
+```
+
 ### Google Calendar
 
 1. Create a new project in [Google Cloud Console](https://console.cloud.google.com/) and enable Google Auth Platform.
@@ -49,7 +57,28 @@ Use Vercel free hobby tier, connect to your Github and start a deployment for yo
 
 ## Tools for developers
 
-Install Vercel MCP for Claude (TODO commands for Codex, Cursor)
+### Cloudflare Tunnel
+
+Install `cloudflared` and serve your local server from a public url (required for OpenAI hosted MCP tools)
+https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+```
+cloudflared tunnel --url https://127.0.0.1:3000
+```
+
+Copy your Tunnel URL and set it to your `NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL` in `.env`
+
+### MCP Inspector
+
+Open MCP inspector for manually exploring the MCP server
+
+```
+npx @modelcontextprotocol/inspector
+```
+
+### Vercel MCP tools
+
+Install Vercel MCP for Claude (TODO include commands for Codex, Cursor)
 
 ```
 claude mcp add --transport http vercel https://mcp.vercel.com
