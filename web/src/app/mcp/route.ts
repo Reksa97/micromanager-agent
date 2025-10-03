@@ -3,31 +3,14 @@ import {
   updateUserContextDocument,
   UserContextDocument,
 } from "@/lib/user-context";
-import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import {
-  CallToolResult,
-  ServerNotification,
-  ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
-import { createMcpHandler } from "mcp-handler";
+import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { z } from "zod";
 
 const formatMcpResponse = (response: string): CallToolResult => ({
   content: [{ type: "text", text: response }],
 });
-
-const parseExtra = (
-  extra: RequestHandlerExtra<ServerRequest, ServerNotification>
-) => {
-  const userId = extra.requestInfo?.headers["user-id"] as string;
-  if (!userId) {
-    console.error("User ID not in headers", {
-      headers: extra.requestInfo?.headers,
-    });
-    throw new Error("User ID not in headers");
-  }
-  return { userId };
-};
 
 // StreamableHttp server
 const handler = createMcpHandler(
@@ -40,9 +23,10 @@ const handler = createMcpHandler(
       },
       async ({ getAllData }, extra) => {
         try {
-          const { userId } = parseExtra(extra);
+          const userId = extra?.authInfo?.clientId;
           console.log("get_user_context", { getAllData, userId });
           if (!userId) {
+            console.error("User ID is required", { authInfo: extra?.authInfo });
             return formatMcpResponse("User ID is required");
           }
           const userContextDoc = await getUserContextDocument(userId);
@@ -78,14 +62,14 @@ const handler = createMcpHandler(
           if (!contextUpdates && !contextDeletes) {
             return formatMcpResponse("No updates or deletes provided");
           }
-          const { userId } = parseExtra(extra);
+          const userId = extra?.authInfo?.clientId;
           console.log("update_user_context", {
             contextUpdates,
             contextDeletes,
             userId,
           });
           if (!userId) {
-            console.error("User ID is required", { extra });
+            console.error("User ID is required", { authInfo: extra?.authInfo });
             return formatMcpResponse("User ID is required");
           }
           let userContextDoc: UserContextDocument | null = null;
@@ -147,4 +131,43 @@ const handler = createMcpHandler(
   }
 );
 
-export { handler as GET, handler as POST, handler as DELETE };
+const verifyToken = async (
+  req: Request,
+  bearerToken?: string
+): Promise<AuthInfo | undefined> => {
+  if (!bearerToken) {
+    console.error("Bearer token is required", { headers: req.headers });
+    return undefined;
+  }
+
+  const userId = req.headers.get("user-id");
+  if (!userId) {
+    // TODO don't log sensitive information
+    console.error("User ID is required", { headers: req.headers });
+    return undefined;
+  }
+
+  const isValid = bearerToken.startsWith("__TEST_VALUE__");
+  if (!isValid) {
+    // TODO don't log sensitive information
+    console.error("Invalid bearer token", { bearerToken });
+    return undefined;
+  }
+
+  return {
+    token: bearerToken,
+    scopes: ["read:user-context", "write:user-context"],
+    clientId: userId,
+    extra: {
+      // Optional extra information
+    },
+  };
+};
+
+const authHandler = withMcpAuth(handler, verifyToken, {
+  required: true,
+  requiredScopes: ["read:user-context"],
+  resourceMetadataPath: "/.well-known/oauth-protected-resource",
+});
+
+export { authHandler as GET, authHandler as POST, authHandler as DELETE };

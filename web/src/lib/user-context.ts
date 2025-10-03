@@ -51,6 +51,7 @@ export async function updateUserContextDocument(
           }
           return acc;
         }, {} as Record<string, unknown>),
+        updatedAt: new Date(),
       },
       $unset: {
         ...contextUpdates.reduce((acc, update) => {

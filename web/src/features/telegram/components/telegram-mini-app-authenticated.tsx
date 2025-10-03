@@ -27,12 +27,18 @@ export function TelegramMiniAppAuthenticated() {
           try {
             miniApp.ready();
           } catch (error) {
-            console.debug("[Telegram Mini App] miniApp.ready unavailable", error);
+            console.debug(
+              "[Telegram Mini App] miniApp.ready unavailable",
+              error
+            );
           }
           try {
             viewport.expand();
           } catch (error) {
-            console.debug("[Telegram Mini App] viewport.expand unavailable", error);
+            console.debug(
+              "[Telegram Mini App] viewport.expand unavailable",
+              error
+            );
           }
         }
 
@@ -113,7 +119,7 @@ export function TelegramMiniAppAuthenticated() {
         </div>
         {/* Build info in top corner */}
         <div className="mt-2">
-          <BuildInfo variant="compact" />
+          <BuildInfo />
         </div>
       </header>
 

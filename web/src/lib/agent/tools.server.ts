@@ -6,7 +6,10 @@ export const getBackendTools = (
   googleAccessToken: string | null | undefined
 ) => {
   console.log("Registering tools for", userId);
-  const tools: Tool[] = [getWeatherTool, micromanagerMCP(userId, undefined)];
+  const tools: Tool[] = [
+    getWeatherTool,
+    micromanagerMCP(userId, "__TEST_VALUE__"),
+  ];
   if (googleAccessToken) {
     console.log("Adding Google Calendar tool with authenticated user's token");
     tools.push(

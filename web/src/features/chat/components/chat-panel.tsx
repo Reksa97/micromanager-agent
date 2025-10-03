@@ -119,7 +119,7 @@ export function ChatPanel({ userId }: ChatPanelProps) {
           isVoiceActive={realtime.isVoiceActive}
           startSession={async () => {
             try {
-              await realtime.startSession(userId);
+              await realtime.startSession(userId, "__TEST_VALUE__");
             } catch {
               // handled by hook toast
             }

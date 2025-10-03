@@ -60,6 +60,7 @@ Use Vercel free hobby tier, connect to your Github and start a deployment for yo
 ### Cloudflare Tunnel
 
 Install `cloudflared` and serve your local server from a public url (required for OpenAI hosted MCP tools)
+https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
 
 ```
 cloudflared tunnel --url https://127.0.0.1:3000

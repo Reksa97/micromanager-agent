@@ -239,7 +239,7 @@ export function useRealtimeAgent({
   );
 
   const startSession = useCallback(
-    async (userId: string, authorization?: string) => {
+    async (userId: string, mcpAuthorization: string) => {
       if (sessionRef.current) return sessionRef.current;
 
       setSignals((prev) => ({
@@ -301,11 +301,11 @@ export function useRealtimeAgent({
           throw new Error("Realtime token missing from response");
         }
 
-        const tools = getFrontendTools(userId, authorization);
+        const tools = getFrontendTools(userId, mcpAuthorization);
 
         const agent = new RealtimeAgent({
           name: "Micromanager",
-          instructions: `You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items. Start the session by summarizing the user context and current weather in Helsinki.
+          instructions: `You are a realtime operator. Keep a running mental model of the meeting, confirm understanding, and outline action items. Start the session by summarizing the user context.
 User context:
 ${contextSnapshot}
 `,
