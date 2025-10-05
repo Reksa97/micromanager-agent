@@ -4,6 +4,8 @@ import { auth, signOut } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CopyMockUrlButton } from "@/features/telegram/components/copy-mock-url-button";
+import { WorkPlanPanel } from "@/features/workplan/components/workplan-panel";
+
 
 export default async function Home() {
   const session = await auth();
@@ -76,6 +78,7 @@ export default async function Home() {
       </header>
 
       <ChatPanel userId={session.user.id} />
+      <WorkPlanPanel />
     </main>
   );
 }
