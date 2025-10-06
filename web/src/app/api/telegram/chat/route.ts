@@ -10,12 +10,13 @@ import {
 } from "@/lib/agent/prompts";
 import { getUserContextDocument } from "@/lib/user-context";
 import { getBackendTools } from "@/lib/agent/tools.server";
+import { verifyTelegramServerToken } from "@/lib/telegram/auth";
 
 export async function POST(req: NextRequest) {
   try {
     // Verify JWT token
     const token = req.headers.get("authorization")?.replace("Bearer ", "");
-    if (!token) {
+    if (!token || !(await verifyTelegramServerToken(token))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

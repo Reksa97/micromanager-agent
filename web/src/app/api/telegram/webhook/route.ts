@@ -5,14 +5,8 @@ import {
   upsertTelegramUser,
   getTelegramUserByTelegramId,
 } from "@/lib/telegram/bot";
-import { initData } from "@telegram-apps/sdk-react";
 import { insertMessage } from "@/lib/conversations";
-import { OpenAI } from "openai";
-import { MODELS } from "@/lib/utils";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { generateTelegramServerToken } from "@/lib/telegram/auth";
 
 let bot: Bot | null = null;
 let handlersRegistered = false;
@@ -102,21 +96,14 @@ async function setupBot() {
       await ctx.replyWithChatAction("typing");
 
       try {
-        const authResponse = await fetch(`${process.env.APP_URL}/api/auth/telegram`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ initData }),
-        });
-
-        if (!authResponse.ok) {
-          throw new Error(`Auth failed with ${authResponse.status}`);
-        }
-
-        const { token } = await authResponse.json();
+        const serverToken = await generateTelegramServerToken();
 
         const response = await fetch(`/api/telegram/chat`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serverToken}`,
+          },
           body: JSON.stringify({
             userId,
             message: text,
