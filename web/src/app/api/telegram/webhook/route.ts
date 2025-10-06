@@ -98,7 +98,7 @@ async function setupBot() {
       try {
         const serverToken = await generateTelegramServerToken();
 
-        const response = await fetch(`/api/telegram/chat`, {
+        const response = await fetch(`${process.env.APP_URL}/api/telegram/chat`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
