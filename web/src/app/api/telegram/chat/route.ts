@@ -16,14 +16,16 @@ export async function POST(req: NextRequest) {
   try {
     // Verify JWT token
     const token = req.headers.get("authorization")?.replace("Bearer ", "");
-    if (!token || !(await verifyTelegramServerToken(token))) {
+    if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    try {
-      await jwtVerify(token, env.JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    
+    if (!(await verifyTelegramServerToken(token))) {
+      try {
+        await jwtVerify(token, env.JWT_SECRET);
+      } catch {
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
     }
 
     const { message, userId } = await req.json();
