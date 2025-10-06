@@ -116,7 +116,7 @@ async function setupBot() {
         }
 
         const data = await response.json();
-        const aiResponse = data.response || "I couldn't generate a response.";
+        const aiResponse = data || "I couldn't generate a response.";
 
         await insertMessage({
           userId,
