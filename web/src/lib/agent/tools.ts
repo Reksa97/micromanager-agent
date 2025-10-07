@@ -10,7 +10,7 @@ export const getWeatherTool = tool({
   },
 });
 
-export const micromanagerMCP = (userId: string, authorization: string) => {
+export const micromanagerMCP = (userId: string, authorization: string, googleAccessToken: string | null | undefined = undefined) => {
   if (!process.env.NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL) {
     throw new Error("MICROMANAGER_MCP_SERVER_URL is not set");
   }
@@ -29,6 +29,7 @@ export const micromanagerMCP = (userId: string, authorization: string) => {
     authorization: auth,
     headers: {
       "user-id": userId,
+      "google-access-token": googleAccessToken ?? "",
       authorization: auth,
     },
   });
