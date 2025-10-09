@@ -1,14 +1,22 @@
 import { hostedMcpTool, Tool } from "@openai/agents";
 import { getWeatherTool, micromanagerMCP } from "./tools";
+import { generateMcpToken } from "@/lib/mcp-auth";
 
-export const getBackendTools = (
+export const getBackendTools = async (
   userId: string,
   googleAccessToken: string | null | undefined
 ) => {
   console.log("Registering tools for", userId);
+
+  // Generate a real MCP token for backend agent use
+  const mcpToken = await generateMcpToken(
+    userId,
+    googleAccessToken ?? process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING
+  );
+
   const tools: Tool[] = [
     getWeatherTool,
-    micromanagerMCP(userId, "__TEST_VALUE__", googleAccessToken ?? process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING),
+    micromanagerMCP(mcpToken),
   ];
   if (googleAccessToken) {
     console.log("Adding Google Calendar tool with authenticated user's token");

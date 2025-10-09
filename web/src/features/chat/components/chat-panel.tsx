@@ -16,11 +16,7 @@ import { SessionControls } from "@/features/chat/components/session-controls";
 import { VoiceVisualizer } from "@/features/chat/components/voice-visualizer";
 import type { ChatMessage } from "@/features/chat/types";
 
-interface ChatPanelProps {
-  userId: string;
-}
-
-export function ChatPanel({ userId }: ChatPanelProps) {
+export function ChatPanel() {
   const [input, setInput] = useState("");
 
   const { messages, isSending, isLoadingHistory, sendMessage } = useChat({
@@ -119,7 +115,7 @@ export function ChatPanel({ userId }: ChatPanelProps) {
           isVoiceActive={realtime.isVoiceActive}
           startSession={async () => {
             try {
-              await realtime.startSession(userId, "__TEST_VALUE__");
+              await realtime.startSession();
             } catch {
               // handled by hook toast
             }

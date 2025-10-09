@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     ]);
 
     const model = userTier === "paid" ? MODELS.text : MODELS.textBudget;
-    const tools = getBackendTools(userId, undefined);
+    const tools = await getBackendTools(userId, undefined);
 
     console.log("Calling agent", { userId, userTier, model });
 

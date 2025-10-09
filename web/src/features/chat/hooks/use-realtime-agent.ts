@@ -239,7 +239,7 @@ export function useRealtimeAgent({
   );
 
   const startSession = useCallback(
-    async (userId: string, mcpAuthorization: string) => {
+    async () => {
       if (sessionRef.current) return sessionRef.current;
 
       setSignals((prev) => ({
@@ -251,6 +251,23 @@ export function useRealtimeAgent({
       }));
 
       try {
+        // Fetch MCP token from the server
+        let mcpToken: string;
+        try {
+          const tokenResponse = await fetch(
+            "/api/mcp/token",
+            withAuth({ method: "POST" })
+          );
+          if (!tokenResponse.ok) {
+            throw new Error("Failed to fetch MCP token");
+          }
+          const tokenData = await tokenResponse.json();
+          mcpToken = tokenData.token;
+        } catch (error) {
+          console.error("Failed to fetch MCP token", error);
+          throw new Error("Failed to initialize MCP authentication");
+        }
+
         let contextSnapshot = "The user context is currently empty.";
 
         try {
@@ -301,7 +318,7 @@ export function useRealtimeAgent({
           throw new Error("Realtime token missing from response");
         }
 
-        const tools = getFrontendTools(userId, mcpAuthorization);
+        const tools = getFrontendTools(mcpToken);
 
         const agent = new RealtimeAgent({
           name: "Micromanager",
