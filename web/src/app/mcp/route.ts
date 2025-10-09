@@ -245,4 +245,4 @@ const authHandler = withMcpAuth(handler, verifyToken, {
   resourceMetadataPath: "/.well-known/oauth-protected-resource",
 });
 
-export { authHandler as GET, authHandler as POST, authHandler as DELETE };
+export { authHandler as GET, authHandler as POST, authHandler as DELETE, authHandler as OPTIONS };
