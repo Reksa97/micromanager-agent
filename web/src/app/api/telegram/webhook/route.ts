@@ -6,12 +6,7 @@ import {
   getTelegramUserByTelegramId,
 } from "@/lib/telegram/bot";
 import { insertMessage } from "@/lib/conversations";
-import { OpenAI } from "openai";
-import { MODELS } from "@/lib/utils";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { generateTelegramServerToken } from "@/lib/telegram/auth";
 
 let bot: Bot | null = null;
 let handlersRegistered = false;
@@ -46,7 +41,7 @@ async function setupBot() {
         `Welcome ${firstName}! 👋\n\n` +
           `I'm your Micromanager Agent assistant. You can:\n` +
           `• Send me messages and I'll help you\n` +
-          `• Use /link <code> to link your web account\n` +
+          `• Use /link YOUR_CODE to link your web account\n` +
           `• Open the Mini App for a richer experience\n\n` +
           `How can I assist you today?`,
         { parse_mode: "HTML" }
@@ -101,22 +96,27 @@ async function setupBot() {
       await ctx.replyWithChatAction("typing");
 
       try {
-        const completion = await openai.chat.completions.create({
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a helpful assistant for the Micromanager Agent platform. Keep responses concise and helpful.",
-            },
-            { role: "user", content: text },
-          ],
-          model: MODELS.textBudget,
-          max_completion_tokens: 500,
+        const serverToken = await generateTelegramServerToken();
+
+        const response = await fetch(`${process.env.APP_URL}/api/telegram/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serverToken}`,
+          },
+          body: JSON.stringify({
+            userId,
+            message: text,
+            source: "telegram",
+          }),
         });
 
-        const aiResponse =
-          completion.choices[0].message.content ||
-          "I couldn't generate a response.";
+        if (!response.ok) {
+          throw new Error(`Chat API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        const aiResponse = data.response || "I couldn't generate a response.";
 
         await insertMessage({
           userId,

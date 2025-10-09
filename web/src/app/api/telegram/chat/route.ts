@@ -11,6 +11,7 @@ import {
 import { getUserContextDocument } from "@/lib/user-context";
 import { getBackendTools } from "@/lib/agent/tools.server";
 import { getUserById } from "@/lib/user";
+import { verifyTelegramServerToken } from "@/lib/telegram/auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,11 +20,13 @@ export async function POST(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    try {
-      await jwtVerify(token, env.JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    
+    if (!(await verifyTelegramServerToken(token))) {
+      try {
+        await jwtVerify(token, env.JWT_SECRET);
+      } catch {
+        return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      }
     }
 
     const { message, userId } = await req.json();
