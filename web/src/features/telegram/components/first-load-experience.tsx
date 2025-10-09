@@ -1,0 +1,169 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Loader2, Sparkles, Calendar, MessageSquare, Brain } from "lucide-react";
+import { Card } from "@/components/ui/card";
+
+interface FirstLoadExperienceProps {
+  userName?: string;
+  onComplete: () => void;
+}
+
+type LoadingStep = {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  completed: boolean;
+};
+
+export function FirstLoadExperience({ userName, onComplete }: FirstLoadExperienceProps) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [steps, setSteps] = useState<LoadingStep[]>([
+    {
+      id: "analyzing",
+      label: "Analyzing your profile...",
+      icon: <Brain className="h-5 w-5" />,
+      completed: false,
+    },
+    {
+      id: "generating",
+      label: "Generating personalized greeting...",
+      icon: <MessageSquare className="h-5 w-5" />,
+      completed: false,
+    },
+    {
+      id: "checking",
+      label: "Checking calendar integrations...",
+      icon: <Calendar className="h-5 w-5" />,
+      completed: false,
+    },
+    {
+      id: "ready",
+      label: "Setting up your workspace...",
+      icon: <Sparkles className="h-5 w-5" />,
+      completed: false,
+    },
+  ]);
+
+  useEffect(() => {
+    // Simulate progressive loading
+    const intervals: NodeJS.Timeout[] = [];
+
+    steps.forEach((_, index) => {
+      const timeout = setTimeout(() => {
+        setSteps((prev) =>
+          prev.map((step, i) =>
+            i === index ? { ...step, completed: true } : step
+          )
+        );
+        setCurrentStep(index + 1);
+
+        // Call onComplete when all steps are done
+        if (index === steps.length - 1) {
+          setTimeout(() => {
+            onComplete();
+          }, 500);
+        }
+      }, (index + 1) * 1200); // Stagger each step by 1.2s
+
+      intervals.push(timeout);
+    });
+
+    return () => {
+      intervals.forEach(clearTimeout);
+    };
+  }, []);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <Card className="w-full max-w-md border-2 border-primary/20 bg-white/80 p-8 shadow-2xl backdrop-blur-sm dark:bg-gray-800/80">
+        <div className="space-y-8">
+          {/* Header */}
+          <div className="text-center">
+            <div className="mb-4 flex justify-center">
+              <div className="rounded-full bg-primary/10 p-4">
+                <Sparkles className="h-12 w-12 text-primary animate-pulse" />
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Welcome{userName ? `, ${userName}` : ""}!
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Setting up your Micromanager experience
+            </p>
+          </div>
+
+          {/* Progress Steps */}
+          <div className="space-y-4">
+            {steps.map((step, index) => (
+              <div
+                key={step.id}
+                className={`flex items-center gap-3 rounded-lg border p-3 transition-all duration-500 ${
+                  step.completed
+                    ? "border-primary/50 bg-primary/5 scale-100"
+                    : index === currentStep
+                    ? "border-primary/30 bg-primary/10 scale-105"
+                    : "border-border/30 bg-muted/20 scale-95 opacity-50"
+                }`}
+              >
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                    step.completed
+                      ? "bg-primary text-primary-foreground"
+                      : index === currentStep
+                      ? "bg-primary/20 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {step.completed ? (
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : index === currentStep ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    step.icon
+                  )}
+                </div>
+                <span
+                  className={`text-sm font-medium transition-colors ${
+                    step.completed || index === currentStep
+                      ? "text-foreground"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Progress Bar */}
+          <div className="space-y-2">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-all duration-1000 ease-out"
+                style={{
+                  width: `${(currentStep / steps.length) * 100}%`,
+                }}
+              />
+            </div>
+            <p className="text-center text-xs text-muted-foreground">
+              {currentStep} of {steps.length} complete
+            </p>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}

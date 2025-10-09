@@ -1,3 +1,5 @@
 .env
 .secret
 .playwright-mcp
+infra/gcp/*.json
+infra/gcp/*.env

@@ -53,7 +53,17 @@ npm run setup-telegram -- https://yoursubdomain.vercel.app
 
 ## Deployment
 
+### Vercel
+
 Use Vercel free hobby tier, connect to your Github and start a deployment for your repo
+
+### Google Cloud Run (free tier)
+
+Alternatively deploy to Google Cloud Run using the configuration under `infra/gcp`:
+
+- Follow `infra/gcp/README.md` to create a project, enable APIs, and store secrets
+- Build and deploy with `./infra/gcp/deploy-cloud-run.sh --project YOUR_PROJECT_ID`
+- Point `NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL` and Telegram webhook URLs at the Cloud Run domain once it is live
 
 ## Tools for developers
 

@@ -1,0 +1,13 @@
+.git
+.gitignore
+node_modules
+web/node_modules
+web/.next
+web/coverage
+web/dev.log
+web/playwright-report
+web/test-results
+infra/gcp/*.json
+infra/gcp/*.env
+.env
+.DS_Store
