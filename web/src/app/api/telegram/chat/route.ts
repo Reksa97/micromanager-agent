@@ -20,13 +20,25 @@ export async function POST(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    
-    if (!(await verifyTelegramServerToken(token))) {
+
+    // Try verifying with TELEGRAM_SERVER_SECRET first (for server-to-server calls)
+    // If that fails, fall back to JWT_SECRET (for client tokens)
+    let isValid = false;
+    try {
+      isValid = await verifyTelegramServerToken(token);
+    } catch {
+      // Server token verification failed, try client token
       try {
         await jwtVerify(token, env.JWT_SECRET);
+        isValid = true;
       } catch {
+        console.error("Token verification failed for both server and client secrets");
         return NextResponse.json({ error: "Invalid token" }, { status: 401 });
       }
+    }
+
+    if (!isValid) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
     const { message, userId } = await req.json();

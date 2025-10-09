@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { miniApp, themeParams, viewport } from "@telegram-apps/sdk-react";
 import { TelegramChatPanel } from "@/features/telegram/components/telegram-chat-panel";
+import { LinkedAccountsDialog } from "@/features/telegram/components/linked-accounts-dialog";
 import { Badge } from "@/components/ui/badge";
 import { BuildInfo } from "@/components/build-info";
 import { Loader2 } from "lucide-react";
@@ -115,6 +116,7 @@ export function TelegramMiniAppAuthenticated() {
             <span className="text-sm text-muted-foreground">
               {user?.name ?? "User"}
             </span>
+            {user?.id && <LinkedAccountsDialog userId={user.id} />}
           </div>
         </div>
         {/* Build info in top corner */}

@@ -208,12 +208,43 @@ const verifyToken = async (
   req: Request,
   bearerToken?: string
 ): Promise<AuthInfo | undefined> => {
+  console.log("[MCP Auth] Received request with token:", {
+    hasBearerToken: !!bearerToken,
+    tokenPreview: bearerToken ? bearerToken.substring(0, 20) + "..." : "none",
+    userId: req.headers.get("user-id"),
+    hasGoogleToken: !!req.headers.get("google-access-token"),
+  });
+
   if (!bearerToken) {
     console.error("Bearer token is required");
     return undefined;
   }
 
-  // Check for development API key first (never expires, hardcoded test user)
+  // Check for simple __TEST_VALUE__ token (origin/main compatibility)
+  if (bearerToken.startsWith("__TEST_VALUE__")) {
+    const userId = req.headers.get("user-id");
+    if (!userId) {
+      console.error("User ID is required in headers");
+      return undefined;
+    }
+
+    const googleAccessToken = req.headers.get("google-access-token");
+    console.log("[MCP Auth] Using simple __TEST_VALUE__ auth:", {
+      userId,
+      hasGoogleToken: !!googleAccessToken,
+    });
+
+    return {
+      token: bearerToken,
+      scopes: ["read:user-context", "write:user-context"],
+      clientId: userId,
+      extra: {
+        googleAccessToken: googleAccessToken || undefined,
+      },
+    };
+  }
+
+  // Check for development API key (never expires, hardcoded test user)
   const devApiKey = env.MCP_DEVELOPMENT_API_KEY;
   if (devApiKey && bearerToken === devApiKey) {
     const testUserId = process.env.MCP_DEV_TEST_USER_ID || "999000000";
@@ -221,12 +252,25 @@ const verifyToken = async (
       "[MCP Dev Auth] Using development API key with test user:",
       testUserId
     );
+
+    // Fetch Google token from DB with auto-refresh
+    const { getGoogleAccessToken } = await import("@/lib/google-tokens");
+    let googleAccessToken = await getGoogleAccessToken(testUserId);
+
+    // Fallback to env var if no DB token
+    if (!googleAccessToken) {
+      console.log("[MCP Dev Auth] No DB token, falling back to env var");
+      googleAccessToken = process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING ?? null;
+    } else {
+      console.log("[MCP Dev Auth] Using DB token (auto-refreshed if needed)");
+    }
+
     return {
       token: bearerToken,
       scopes: ["read:user-context", "write:user-context"],
       clientId: testUserId,
       extra: {
-        googleAccessToken: process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING,
+        googleAccessToken: googleAccessToken,
       },
     };
   }

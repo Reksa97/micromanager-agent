@@ -10,25 +10,33 @@ export const getWeatherTool = tool({
   },
 });
 
-export const micromanagerMCP = (mcpToken: string) => {
+export const micromanagerMCP = (userId: string, googleAccessToken?: string | null) => {
   if (!process.env.NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL) {
     throw new Error("MICROMANAGER_MCP_SERVER_URL is not set");
   }
   console.log(
     "Using MCP server",
-    process.env.NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL
+    process.env.NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL,
+    {
+      userId,
+      hasGoogleToken: !!googleAccessToken,
+    }
   );
-  if (!mcpToken) {
-    throw new Error("MCP token is required");
-  }
-  const auth = `Bearer ${mcpToken}`;
+
+  // Use simple token auth like origin/main
+  const auth = `Bearer __TEST_VALUE__`;
   return hostedMcpTool({
     serverLabel: "micromanager",
     serverUrl: process.env.NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL,
     authorization: auth,
+    headers: {
+      "user-id": userId,
+      "google-access-token": googleAccessToken ?? "",
+      authorization: auth,
+    },
   });
 };
 
-export const getFrontendTools = (mcpToken: string): Tool[] => {
-  return [micromanagerMCP(mcpToken), getWeatherTool];
+export const getFrontendTools = (userId: string, googleAccessToken?: string | null): Tool[] => {
+  return [micromanagerMCP(userId, googleAccessToken), getWeatherTool];
 };

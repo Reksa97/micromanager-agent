@@ -120,6 +120,18 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
     }),
   ],
   callbacks: {
+    async signIn({ account, profile }) {
+      // Handle Telegram-Google linking flow
+      if (account?.provider === "google") {
+        // Handle Telegram-Google linking flow
+        // In a real implementation, you'd need to handle state in a custom page
+        console.log("[NextAuth] Google sign-in completed", {
+          email: profile?.email,
+          provider: account.provider,
+        });
+      }
+      return true;
+    },
     async jwt({ token, user, account }) {
       if (account && user) {
         const typedUser = user as User;
