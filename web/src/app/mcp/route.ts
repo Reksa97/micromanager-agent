@@ -196,6 +196,7 @@ const handler = createMcpHandler(
     verboseLogs: true,
     maxDuration: 60,
     disableSse: true,
+    forceJson: true,
   }
 );
 
