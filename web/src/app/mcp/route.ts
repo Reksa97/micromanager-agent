@@ -196,7 +196,6 @@ const handler = createMcpHandler(
     verboseLogs: true,
     maxDuration: 60,
     disableSse: true,
-    forceJson: true,
   }
 );
 
@@ -246,4 +245,4 @@ const authHandler = withMcpAuth(handler, verifyToken, {
   resourceMetadataPath: "/.well-known/oauth-protected-resource",
 });
 
-export { authHandler as GET, authHandler as POST, authHandler as DELETE, authHandler as OPTIONS };
+export { authHandler as GET, authHandler as POST, authHandler as DELETE };
