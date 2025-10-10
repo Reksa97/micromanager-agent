@@ -120,14 +120,24 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ account, profile }) {
+    async signIn({ account, profile, user }) {
       // Handle Telegram-Google linking flow
       if (account?.provider === "google") {
-        // Handle Telegram-Google linking flow
-        // In a real implementation, you'd need to handle state in a custom page
-        console.log("[NextAuth] Google sign-in completed", {
+        console.log("[NextAuth signIn] Google sign-in completed", {
           email: profile?.email,
           provider: account.provider,
+          userId: user?.id,
+          accountId: account.providerAccountId,
+        });
+
+        // Log account details for debugging
+        console.log("[NextAuth signIn] Account details:", {
+          provider: account.provider,
+          type: account.type,
+          providerAccountId: account.providerAccountId,
+          hasAccessToken: !!account.access_token,
+          hasRefreshToken: !!account.refresh_token,
+          expiresAt: account.expires_at,
         });
       }
       return true;
@@ -138,31 +148,49 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         token.sub = typedUser.id;
         (token as JWT).tier = typedUser.tier ?? "free";
 
+        console.log("[NextAuth jwt] Creating new token for user:", {
+          userId: typedUser.id,
+          email: typedUser.email,
+          provider: account.provider,
+        });
+
         if (account.provider === "google") {
           token.googleAccessToken = account.access_token;
           token.googleRefreshToken =
             account.refresh_token ?? token.googleRefreshToken;
           token.googleExpires = Date.now() + (account.expires_in ?? 0) * 1000;
+
+          console.log("[NextAuth jwt] Google tokens added to JWT:", {
+            hasAccessToken: !!token.googleAccessToken,
+            hasRefreshToken: !!token.googleRefreshToken,
+            expiresIn: (account.expires_in ?? 0) + " seconds",
+          });
+
           return token;
         }
       }
 
-      console.log(
-        `Token expires in: ${
-          ((token.googleExpires ?? 0) - Date.now()) / 60000
-        } minutes`
-      );
-
       if (token.googleExpires && Date.now() < token.googleExpires - 60 * 1000) {
         return token;
       }
-      console.log("Access token expired, refreshing...");
-      return await refreshGoogleAccessToken(token);
+
+      if (token.googleExpires) {
+        console.log("[NextAuth jwt] Access token expired, refreshing...");
+        return await refreshGoogleAccessToken(token);
+      }
+
+      return token;
     },
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
         session.user.tier = (token as JWT).tier ?? "free";
+
+        console.log("[NextAuth session] Creating session for user:", {
+          userId: token.sub,
+          email: session.user.email,
+          hasGoogleTokens: !!(token.googleAccessToken && token.googleRefreshToken),
+        });
       }
 
       session.googleAccessToken = token.googleAccessToken;
