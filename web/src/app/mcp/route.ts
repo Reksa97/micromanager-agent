@@ -29,6 +29,74 @@ const formatMcpResponse = (response: string): CallToolResult => ({
   content: [{ type: "text", text: response }],
 });
 
+// Scope map for tool authorization
+const TOOL_SCOPE_MAP: Record<string, string[]> = {
+  "get_user_context": ["read:user-context"],
+  "update_user_context": ["write:user-context"],
+  "list-calendars": ["calendar:read"],
+  "list_calendars": ["calendar:read"],
+  "list-events": ["calendar:read"],
+  "list_events": ["calendar:read"],
+  "search-events": ["calendar:read"],
+  "search_events": ["calendar:read"],
+  "get-event": ["calendar:read"],
+  "get_event": ["calendar:read"],
+  "list-colors": ["calendar:read"],
+  "list_colors": ["calendar:read"],
+  "create-event": ["calendar:write"],
+  "create_event": ["calendar:write"],
+  "update-event": ["calendar:write"],
+  "update_event": ["calendar:write"],
+  "delete-event": ["calendar:write"],
+  "delete_event": ["calendar:write"],
+  "get-freebusy": ["calendar:read"],
+  "get_freebusy": ["calendar:read"],
+  "get-current-time": ["calendar:read"],
+  "get_current_time": ["calendar:read"],
+};
+
+// Helper functions for scope checking
+const scopesFromAuth = (auth?: AuthInfo): Set<string> =>
+  new Set(auth?.scopes ?? []);
+
+const userHasScope = (required: string[], auth?: AuthInfo): boolean =>
+  required.length === 0 ||
+  required.some((scope) => scopesFromAuth(auth).has(scope));
+
+// These helper functions are available for future dynamic capability filtering
+// Currently, all tools are listed in capabilities and access control is enforced at runtime
+// const visibleToolNames = (auth?: AuthInfo): string[] =>
+//   Object.entries(TOOL_SCOPE_MAP)
+//     .filter(([name, scopes]) => userHasScope(scopes, auth))
+//     .map(([name]) => name);
+//
+// const getToolCapabilities = (auth?: AuthInfo) => {
+//   const visible = visibleToolNames(auth);
+//   const capabilities: Record<string, { description: string }> = {};
+//
+//   visible.forEach((toolName) => {
+//     const normalizedName = toolName.replace("-", "_");
+//
+//     // Check if it's a context tool
+//     if (toolName === "get_user_context") {
+//       capabilities[normalizedName] = { description: "Get the user context" };
+//     } else if (toolName === "update_user_context") {
+//       capabilities[normalizedName] = { description: "Update the user context" };
+//     } else {
+//       // It's a calendar tool
+//       const calendarToolName = toolName.replace("_", "-");
+//       const toolInfo = ToolRegistry.getToolsWithSchemas().find(
+//         (t) => t.name === calendarToolName
+//       );
+//       if (toolInfo) {
+//         capabilities[normalizedName] = { description: toolInfo.description };
+//       }
+//     }
+//   });
+//
+//   return capabilities;
+// };
+
 const calendarToolHandlers = {
   "list-calendars": ListCalendarsHandler,
   "list-events": ListEventsHandler,
@@ -52,6 +120,15 @@ const handler = createMcpHandler(
         getAllData: z.boolean().optional(),
       },
       async ({ getAllData }, extra) => {
+        // Check scope authorization
+        const requiredScopes = TOOL_SCOPE_MAP["get_user_context"];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          console.error("[MCP Auth] Missing required scope for get_user_context");
+          return formatMcpResponse(
+            "Access denied: Missing required scope 'read:user-context'"
+          );
+        }
+
         try {
           const userId = extra?.authInfo?.clientId;
           console.log("get_user_context", { getAllData, userId });
@@ -88,6 +165,15 @@ const handler = createMcpHandler(
         contextDeletes: z.array(z.string()).optional(),
       },
       async ({ contextUpdates, contextDeletes }, extra) => {
+        // Check scope authorization
+        const requiredScopes = TOOL_SCOPE_MAP["update_user_context"];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          console.error("[MCP Auth] Missing required scope for update_user_context");
+          return formatMcpResponse(
+            "Access denied: Missing required scope 'write:user-context'"
+          );
+        }
+
         try {
           if (!contextUpdates && !contextDeletes) {
             return formatMcpResponse("No updates or deletes provided");
@@ -149,6 +235,19 @@ const handler = createMcpHandler(
           inputSchema: ToolRegistry.extractSchemaShape(ToolSchemas[tool.name]),
         },
         async (args, extra) => {
+          // Check scope authorization
+          const requiredScopes =
+            TOOL_SCOPE_MAP[tool.name] ?? TOOL_SCOPE_MAP[tool.name.replace("_", "-")] ?? [];
+          if (!userHasScope(requiredScopes, extra?.authInfo)) {
+            console.error(`[MCP Auth] Missing required scope for ${tool.name}`, {
+              required: requiredScopes,
+              userScopes: extra?.authInfo?.scopes,
+            });
+            return formatMcpResponse(
+              `Access denied: Missing required scope for ${tool.name}. Required: ${requiredScopes.join(", ")}`
+            );
+          }
+
           try {
             const oAuth2Client = new OAuth2Client({
               clientId: env.GOOGLE_CLIENT_ID,
@@ -182,17 +281,28 @@ const handler = createMcpHandler(
   },
   {
     capabilities: {
+      // NOTE: Tool capabilities are listed here for discovery purposes.
+      // Access control is enforced at runtime via scope checks in each tool handler.
+      // Users will only be able to execute tools they have scopes for.
+      // To generate scoped tokens, use generateMcpToken(userId, googleToken, scopes).
+      // Available scopes: read:user-context, write:user-context, calendar:read, calendar:write
       tools: {
         get_user_context: {
-          description: "Get the user context",
+          description: "Get the user context (requires: read:user-context)",
         },
         update_user_context: {
-          description: "Update the user context",
+          description: "Update the user context (requires: write:user-context)",
         },
-        ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => ({
-          ...rest,
-          [tool.name.replace("-", "_")]: { description: tool.description },
-        })),
+        ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => {
+          const scopes = TOOL_SCOPE_MAP[tool.name] || [];
+          const scopeStr = scopes.length > 0 ? ` (requires: ${scopes.join(", ")})` : "";
+          return {
+            ...rest,
+            [tool.name.replace("-", "_")]: {
+              description: tool.description + scopeStr,
+            },
+          };
+        }, {}),
       },
     },
   },
@@ -240,9 +350,17 @@ const verifyToken = async (
       console.log("[MCP Dev Auth] Using DB token (auto-refreshed if needed)");
     }
 
+    // Dev users get all scopes
+    const devScopes = [
+      "read:user-context",
+      "write:user-context",
+      "calendar:read",
+      "calendar:write",
+    ];
+
     return {
       token: bearerToken,
-      scopes: ["read:user-context", "write:user-context"],
+      scopes: devScopes,
       clientId: testUserId,
       extra: {
         googleAccessToken: googleAccessToken,
@@ -258,15 +376,34 @@ const verifyToken = async (
     return undefined;
   }
 
+  // Determine user scopes based on token payload and capabilities
+  const userScopes: string[] = [];
+
+  // If token has explicit scopes, use those
+  if (payload.scopes && payload.scopes.length > 0) {
+    userScopes.push(...payload.scopes);
+  } else {
+    // Otherwise, grant based on capabilities
+    // All users get context access
+    userScopes.push("read:user-context", "write:user-context");
+
+    // If user has Google token, they get calendar access
+    if (payload.googleAccessToken) {
+      userScopes.push("calendar:read", "calendar:write");
+    }
+  }
+
   console.log("[MCP Auth] Verified token", {
     userId: payload.userId,
     googleAccessToken: payload.googleAccessToken?.substring(0, 20) + "...",
     hasGoogleAccessToken: !!payload.googleAccessToken,
+    tokenScopes: payload.scopes,
+    assignedScopes: userScopes,
   });
 
   return {
     token: bearerToken,
-    scopes: ["read:user-context", "write:user-context"],
+    scopes: userScopes,
     clientId: payload.userId,
     extra: {
       googleAccessToken: payload.googleAccessToken,
@@ -276,7 +413,7 @@ const verifyToken = async (
 
 const authHandler = withMcpAuth(handler, verifyToken, {
   required: true,
-  requiredScopes: ["read:user-context"],
+  // No global requiredScopes - we enforce scopes per-tool for fine-grained control
   resourceMetadataPath: "/.well-known/oauth-protected-resource",
 });
 
