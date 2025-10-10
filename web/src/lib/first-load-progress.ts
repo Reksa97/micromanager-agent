@@ -82,7 +82,8 @@ export async function completeProgress(userId: string): Promise<void> {
     {
       $set: {
         "firstLoadProgress.currentStep": "complete",
-        "firstLoadProgress.completedSteps": ["analyzing", "generating", "checking", "ready", "complete"],
+        // Only include the 4 visual steps (not "complete" itself)
+        "firstLoadProgress.completedSteps": ["analyzing", "generating", "checking", "ready"],
         hasCompletedFirstLoad: true,
         updatedAt: new Date(),
       },

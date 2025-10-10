@@ -18,6 +18,7 @@ type LoadingStep = {
 
 export function FirstLoadExperience({ userName, onComplete }: FirstLoadExperienceProps) {
   const [currentStep, setCurrentStep] = useState(0);
+  const [isFinishing, setIsFinishing] = useState(false);
   const [steps, setSteps] = useState<LoadingStep[]>([
     {
       id: "analyzing",
@@ -80,14 +81,16 @@ export function FirstLoadExperience({ userName, onComplete }: FirstLoadExperienc
             }))
           );
 
-          // Update current step count
-          setCurrentStep(status.completedSteps.length);
+          // Update current step count (cap at total steps to prevent "5 of 4")
+          const completedCount = status.completedSteps.length;
+          setCurrentStep(Math.min(completedCount, steps.length));
 
-          // If complete, stop polling and call onComplete
+          // If complete, show finishing state and then call onComplete
           if (status.isComplete) {
             if (pollingInterval) {
               clearInterval(pollingInterval);
             }
+            setIsFinishing(true);
             setTimeout(() => {
               onComplete();
             }, 500);
@@ -214,9 +217,16 @@ export function FirstLoadExperience({ userName, onComplete }: FirstLoadExperienc
                 }}
               />
             </div>
-            <p className="text-center text-xs text-muted-foreground">
-              {currentStep} of {steps.length} complete
-            </p>
+            {isFinishing ? (
+              <div className="flex items-center justify-center gap-2 text-xs text-primary">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span className="font-medium">Finalizing your experience...</span>
+              </div>
+            ) : (
+              <p className="text-center text-xs text-muted-foreground">
+                {currentStep} of {steps.length} complete
+              </p>
+            )}
           </div>
         </div>
       </Card>
