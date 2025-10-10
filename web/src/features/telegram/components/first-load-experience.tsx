@@ -46,33 +46,83 @@ export function FirstLoadExperience({ userName, onComplete }: FirstLoadExperienc
   ]);
 
   useEffect(() => {
-    // Simulate progressive loading
-    const intervals: NodeJS.Timeout[] = [];
+    const token = localStorage.getItem("telegram-token");
+    if (!token) {
+      console.error("[First Load] No token found");
+      return;
+    }
 
-    steps.forEach((_, index) => {
-      const timeout = setTimeout(() => {
-        setSteps((prev) =>
-          prev.map((step, i) =>
-            i === index ? { ...step, completed: true } : step
-          )
-        );
-        setCurrentStep(index + 1);
+    let pollingInterval: NodeJS.Timeout | null = null;
 
-        // Call onComplete when all steps are done
-        if (index === steps.length - 1) {
-          setTimeout(() => {
-            onComplete();
-          }, 500);
+    // Initialize first-load tasks
+    const initFirstLoad = async () => {
+      try {
+        const response = await fetch("/api/first-load/init", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to initialize first-load");
         }
-      }, (index + 1) * 1200); // Stagger each step by 1.2s
 
-      intervals.push(timeout);
-    });
+        console.log("[First Load] Initialized, starting polling");
 
-    return () => {
-      intervals.forEach(clearTimeout);
+        // Start polling for progress
+        pollingInterval = setInterval(async () => {
+          try {
+            const statusResponse = await fetch("/api/first-load/status", {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            if (!statusResponse.ok) {
+              throw new Error("Failed to get status");
+            }
+
+            const status = await statusResponse.json();
+
+            // Update steps based on completed steps from backend
+            setSteps((prev) =>
+              prev.map((step) => ({
+                ...step,
+                completed: status.completedSteps.includes(step.id),
+              }))
+            );
+
+            // Update current step count
+            setCurrentStep(status.completedSteps.length);
+
+            // If complete, stop polling and call onComplete
+            if (status.isComplete) {
+              if (pollingInterval) {
+                clearInterval(pollingInterval);
+              }
+              setTimeout(() => {
+                onComplete();
+              }, 500);
+            }
+          } catch (error) {
+            console.error("[First Load] Error polling status:", error);
+          }
+        }, 500); // Poll every 500ms
+      } catch (error) {
+        console.error("[First Load] Error initializing:", error);
+      }
     };
-  }, []);
+
+    initFirstLoad();
+
+    // Cleanup
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [onComplete]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">

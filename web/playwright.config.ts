@@ -13,9 +13,10 @@ export default defineConfig({
   reporter: "html",
 
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "https://localhost:3000",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    ignoreHTTPSErrors: true, // Allow self-signed certificates
   },
 
   projects: [
@@ -25,11 +26,12 @@ export default defineConfig({
     },
   ],
 
-  // Run dev server before tests
-  webServer: {
+  // Run dev server before tests (disabled - use existing server)
+  webServer: process.env.CI ? {
     command: "npm run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    url: "https://localhost:3000",
+    reuseExistingServer: false,
     timeout: 120 * 1000,
-  },
+    ignoreHTTPSErrors: true,
+  } : undefined,
 });

@@ -4,18 +4,11 @@ import { env } from "@/env";
 import { getMongoClient } from "@/lib/db";
 
 /**
- * DEV ONLY: Reset user progress for testing
+ * Reset user progress for testing
+ * Available in dev for all users, in production only for paid users
  * Resets XP, level, streak, and first-load status
  */
 export async function POST(req: NextRequest) {
-  // Only allow in development
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "Not available in production" },
-      { status: 403 }
-    );
-  }
-
   try {
     // Get token from Authorization header
     const token = req.headers.get("authorization")?.replace("Bearer ", "");
@@ -27,9 +20,21 @@ export async function POST(req: NextRequest) {
     // Verify JWT token
     const { payload } = await jwtVerify(token, env.JWT_SECRET);
     const userId = payload.sub;
+    const userTier = payload.tier as string | undefined;
 
     if (!userId) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
+
+    // In production, only allow paid users (paid, enterprise, admin)
+    if (process.env.NODE_ENV === "production") {
+      const allowedTiers = ["paid", "enterprise", "admin"];
+      if (!userTier || !allowedTiers.includes(userTier)) {
+        return NextResponse.json(
+          { error: "This feature is only available for paid users" },
+          { status: 403 }
+        );
+      }
     }
 
     const client = await getMongoClient();
@@ -49,6 +54,9 @@ export async function POST(req: NextRequest) {
           hasCompletedFirstLoad: false,
           updatedAt: new Date(),
         },
+        $unset: {
+          firstLoadProgress: "",
+        },
       }
     );
 
@@ -56,12 +64,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    console.log(`[DEV] Reset progress for user ${userId}`);
+    console.log(`[Reset Progress] Reset for user ${userId} (tier: ${userTier})`);
 
     return NextResponse.json({
       success: true,
       message: "Progress reset successfully",
       userId,
+      tier: userTier,
     });
   } catch (error) {
     console.error("Error resetting progress:", error);
