@@ -99,7 +99,17 @@ export function TelegramMiniAppAuthenticated() {
     const token = localStorage.getItem("telegram-token");
     if (token && user?.id) {
       try {
+        // Mark first-load as complete in DB
         await fetch("/api/user/complete-first-load", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        // Trigger first-load greeting workflow (sends welcome message)
+        console.log("[First Load] Triggering greeting workflow...");
+        await fetch("/api/workflow/first-load-greeting", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -109,7 +119,7 @@ export function TelegramMiniAppAuthenticated() {
         setUser((prev) => prev ? { ...prev, hasCompletedFirstLoad: true } : null);
         setShowFirstLoad(false);
       } catch (error) {
-        console.error("Failed to mark first load complete:", error);
+        console.error("Failed to complete first load:", error);
         // Still hide the first load experience
         setShowFirstLoad(false);
       }

@@ -20,7 +20,7 @@
   "dependencies": {
     "@auth/mongodb-adapter": "3.10.0",
     "@cocal/google-calendar-mcp": "file:google-calendar-mcp",
-    "@modelcontextprotocol/sdk": "1.19.1",
+    "@modelcontextprotocol/sdk": "1.20.0",
     "@openai/agents": "0.1.9",
     "@openai/agents-realtime": "0.1.8",
     "@radix-ui/react-avatar": "1.1.10",
