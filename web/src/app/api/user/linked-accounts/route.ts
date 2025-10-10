@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       .find({ userId })
       .toArray();
 
-    // Get user info for email
+    // Get user info for email and Telegram details
     const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
 
     const linkedAccounts = accounts.map((account) => ({
@@ -52,6 +52,12 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       accounts: linkedAccounts,
+      user: {
+        id: userId,
+        name: user?.name,
+        email: user?.email,
+        telegramId: user?.telegramId,
+      },
     });
   } catch (error) {
     console.error("Error fetching linked accounts:", error);

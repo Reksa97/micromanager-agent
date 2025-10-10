@@ -10,14 +10,22 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Settings, Link2, CheckCircle2, ExternalLink } from "lucide-react";
+import { Settings, Link2, CheckCircle2, ExternalLink, Copy, Check, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 interface LinkedAccount {
   provider: string;
   email?: string;
   connected: boolean;
   scopes?: string;
+}
+
+interface UserInfo {
+  id: string;
+  name?: string;
+  email?: string;
+  telegramId?: number;
 }
 
 interface LinkedAccountsDialogProps {
@@ -28,6 +36,8 @@ export function LinkedAccountsDialog({}: LinkedAccountsDialogProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState<LinkedAccount[]>([]);
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const fetchLinkedAccounts = async () => {
     setLoading(true);
@@ -42,11 +52,20 @@ export function LinkedAccountsDialog({}: LinkedAccountsDialogProps) {
       if (response.ok) {
         const data = await response.json();
         setAccounts(data.accounts || []);
+        setUser(data.user || null);
       }
     } catch (error) {
       console.error("Failed to fetch linked accounts:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCopyUserId = async () => {
+    if (user?.telegramId) {
+      await navigator.clipboard.writeText(user.telegramId.toString());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -94,6 +113,48 @@ export function LinkedAccountsDialog({}: LinkedAccountsDialogProps) {
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Telegram User Info */}
+          {user && (
+            <div className="rounded-lg border bg-muted/50 p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+                  <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <p className="font-medium">Telegram User</p>
+                  <p className="text-sm text-muted-foreground">{user.name || "User"}</p>
+                </div>
+              </div>
+
+              {user.telegramId && (
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Your Telegram ID (for linking)
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={user.telegramId}
+                      readOnly
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={handleCopyUserId}
+                      className="shrink-0"
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Google Calendar */}
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="flex items-center gap-3">
