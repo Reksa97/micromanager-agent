@@ -35,8 +35,8 @@ async function resetUserProgress(page: Page, telegramId: number) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         mockSecret: "dev-secret",
-        mockUser: { id: userId }
-      })
+        mockUser: { id: userId },
+      }),
     });
     return res.json();
   }, telegramId);
@@ -46,7 +46,7 @@ async function resetUserProgress(page: Page, telegramId: number) {
     await page.evaluate(async (token) => {
       await fetch("/api/dev/reset-progress", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
     }, authResponse.token);
   }
@@ -86,12 +86,8 @@ test.describe("First-Load Experience", () => {
 
     // Verify all loading steps are visible
     await expect(page.getByText("Getting to know you...")).toBeVisible();
-    await expect(
-      page.getByText("Preparing your assistant...")
-    ).toBeVisible();
-    await expect(
-      page.getByText("Setting up your experience...")
-    ).toBeVisible();
+    await expect(page.getByText("Preparing your assistant...")).toBeVisible();
+    await expect(page.getByText("Setting up your experience...")).toBeVisible();
     await expect(page.getByText("Almost ready...")).toBeVisible();
 
     // Wait for progress to complete (should take ~5 seconds total)
@@ -99,7 +95,7 @@ test.describe("First-Load Experience", () => {
     await page.waitForSelector("text=Micromanager", { timeout: 15000 });
 
     // Take screenshot for visual verification
-    await page.screenshot({ path: "first-load-complete.png" });
+    await page.screenshot({ path: "artifacts/first-load-complete.png" });
 
     // Verify we're on the telegram-app page
     expect(page.url()).toContain("/telegram-app");
