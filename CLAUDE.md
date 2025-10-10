@@ -55,11 +55,26 @@ ALLOW_USER_REGISTRATION=true     # Enable signups
 
 ## API Endpoints
 
+### Authentication & User
 - `POST /api/auth/telegram` - Telegram authentication
 - `GET /api/user/profile` - User profile and usage
+
+### Telegram
 - `POST /api/telegram/chat` - Telegram chat messages
+
+### Admin
 - `GET /api/admin/users` - Admin: list all users
 - `PATCH /api/admin/users` - Admin: update user
+
+### First-Load Experience
+- `POST /api/first-load/init` - Start first-load tasks (must authenticate)
+- `GET /api/first-load/status` - Poll progress updates (frontend polls every 500ms)
+
+### Development & Testing
+- `POST /api/dev/reset-progress` - Reset user progress for testing
+  - **Dev**: Available to all users
+  - **Production**: Only paid/enterprise/admin tier users
+  - Resets: XP, level, streak, first-load status
 
 ## Common Issues & Solutions
 
@@ -74,6 +89,38 @@ ALLOW_USER_REGISTRATION=true     # Enable signups
 - Check for TypeScript errors and unused imports
 - Verify all imports exist (no untracked files)
 
+### Serverless Functions: MUST AWAIT Async Tasks
+
+**CRITICAL**: Vercel serverless functions terminate immediately after returning a response, killing any background async tasks.
+
+❌ **WRONG** (task gets killed):
+```typescript
+export async function POST(req: NextRequest) {
+  // Fire-and-forget - this will be killed!
+  runLongTask(userId).catch(console.error);
+  return NextResponse.json({ success: true });
+}
+```
+
+✅ **CORRECT** (task completes):
+```typescript
+export async function POST(req: NextRequest) {
+  // MUST await to ensure completion
+  await runLongTask(userId);
+  return NextResponse.json({ success: true });
+}
+```
+
+**Example Bug**: First-load experience was stuck at "analyzing" because `/api/first-load/init` wasn't awaiting `runFirstLoadTasks()`, causing the serverless container to terminate mid-execution.
+
+### First-Load Experience Stuck
+
+- **Symptom**: Progress stuck at first step ("Analyzing your profile...")
+- **Cause**: API route not awaiting async task (see "Serverless Functions" above)
+- **Solution**: Ensure `/api/first-load/init/route.ts` has `await runFirstLoadTasks(userId)`
+- **Test**: Reset progress with `/api/dev/reset-progress` (paid users only in prod)
+- **Monitor**: Check MongoDB `users.firstLoadProgress` field for progress state
+
 ## Message Source Tags
 
 - `web-user` - Web interface messages
@@ -85,9 +132,16 @@ ALLOW_USER_REGISTRATION=true     # Enable signups
 
 1. Make changes
 2. Run `npm run build` - MUST PASS
-3. Test locally
-4. Commit with descriptive message
-5. Push to main (auto-deploys to Vercel)
+3. Test locally with `npm run dev`
+4. Run Playwright tests: `npm run test`
+5. Commit with descriptive message
+6. Push to dev branch (auto-deploys to Vercel)
+7. **WAIT** for deployment to complete
+8. **TEST** in production environment
+9. **VERIFY** everything works before announcing "production ready"
+10. Merge to main if all tests pass
+
+**CRITICAL**: Never announce something is "production ready" without actually testing it in the production environment. Local tests passing ≠ production working.
 
 ## Telegram Bot Setup
 
