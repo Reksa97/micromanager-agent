@@ -5,7 +5,8 @@ import { runFirstLoadTasks } from "@/lib/first-load-progress";
 
 /**
  * Initialize first-load experience
- * Starts async tasks and returns immediately
+ * Runs tasks synchronously (~5s) to ensure completion in serverless
+ * Frontend polls /api/first-load/status for real-time UI updates
  */
 export async function POST(req: NextRequest) {
   try {
@@ -24,16 +25,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    // Start first-load tasks asynchronously (don't await)
-    runFirstLoadTasks(userId).catch((error) => {
-      console.error(`[First Load] Error for user ${userId}:`, error);
-    });
+    // Run first-load tasks synchronously (must await in serverless!)
+    // Serverless functions terminate after response, so we MUST await
+    await runFirstLoadTasks(userId);
 
-    console.log(`[First Load] Initiated for user ${userId}`);
+    console.log(`[First Load] Completed for user ${userId}`);
 
     return NextResponse.json({
       success: true,
-      message: "First-load tasks started",
+      message: "First-load tasks completed",
       userId,
     });
   } catch (error) {
