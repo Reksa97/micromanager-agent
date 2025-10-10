@@ -57,11 +57,22 @@ export function LinkedAccountsDialog({}: LinkedAccountsDialogProps) {
   }, [open]);
 
   const handleConnectGoogle = () => {
-    // Get telegramId from userId (assuming userId contains telegramId or we need to fetch it)
-    const telegramToken = localStorage.getItem("telegram-token");
+    // Open the linking page in mobile browser (Telegram WebView doesn't support Google OAuth)
+    const linkingUrl = `${window.location.origin}/link-telegram`;
 
-    // Redirect to Google OAuth linking flow
-    window.location.href = `/api/auth/google/link?token=${telegramToken}`;
+    // Use Telegram WebApp API to open in external browser if available
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const telegram = (window as any).Telegram;
+      if (telegram?.WebApp) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (telegram as any).WebApp.openLink(linkingUrl);
+        return;
+      }
+    }
+
+    // Fallback: open in new tab
+    window.open(linkingUrl, '_blank');
   };
 
   const googleAccount = accounts.find((a) => a.provider === "google");
