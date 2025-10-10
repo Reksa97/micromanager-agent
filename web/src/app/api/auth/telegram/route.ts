@@ -382,7 +382,18 @@ export async function GET(req: NextRequest) {
 
   try {
     const { jwtVerify } = await import("jose");
+    const { ObjectId } = await import("mongodb");
     const { payload } = await jwtVerify(token, env.JWT_SECRET);
+
+    // Get fresh user data from database
+    const client = await getMongoClient();
+    const db = client.db();
+    const user = await db.collection("users").findOne({ _id: new ObjectId(payload.sub as string) });
+
+    if (!user) {
+      console.error("[Telegram Auth GET] User not found in database");
+      return NextResponse.json({ authenticated: false });
+    }
 
     return NextResponse.json({
       authenticated: true,
@@ -391,6 +402,7 @@ export async function GET(req: NextRequest) {
         telegramId: payload.telegramId,
         name: payload.name,
         tier: payload.tier,
+        hasCompletedFirstLoad: user.hasCompletedFirstLoad ?? false,
       },
     });
   } catch (error) {

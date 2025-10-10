@@ -26,10 +26,38 @@ async function authenticateAsTelegramUser(page: Page, telegramId: number) {
   await page.waitForURL("**/telegram-app**", { timeout: 10000 });
 }
 
+// Helper to reset user's first-load progress
+async function resetUserProgress(page: Page, telegramId: number) {
+  // Authenticate to get token
+  const authResponse = await page.evaluate(async (userId) => {
+    const res = await fetch("/api/auth/telegram", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mockSecret: "dev-secret",
+        mockUser: { id: userId }
+      })
+    });
+    return res.json();
+  }, telegramId);
+
+  if (authResponse.token) {
+    // Reset progress
+    await page.evaluate(async (token) => {
+      await fetch("/api/dev/reset-progress", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+    }, authResponse.token);
+  }
+}
+
 test.describe("First-Load Experience", () => {
   test.beforeEach(async ({ page }) => {
-    // Clear auth state
+    // Navigate to base URL
     await page.goto("https://localhost:3000");
+
+    // Clear browser storage
     await page.evaluate(() => {
       localStorage.clear();
       sessionStorage.clear();
@@ -37,6 +65,15 @@ test.describe("First-Load Experience", () => {
   });
 
   test("should show first-load experience for new users", async ({ page }) => {
+    // Reset user data to ensure fresh first-load experience
+    await resetUserProgress(page, TEST_TELEGRAM_ID_NEW_USER);
+
+    // Clear storage again after reset
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+
     // Authenticate as a new Telegram user (will trigger first-load)
     await authenticateAsTelegramUser(page, TEST_TELEGRAM_ID_NEW_USER);
 
@@ -48,14 +85,14 @@ test.describe("First-Load Experience", () => {
     expect(welcomeText).toContain("Welcome");
 
     // Verify all loading steps are visible
-    await expect(page.getByText("Analyzing your profile...")).toBeVisible();
+    await expect(page.getByText("Getting to know you...")).toBeVisible();
     await expect(
-      page.getByText("Generating personalized greeting...")
+      page.getByText("Preparing your assistant...")
     ).toBeVisible();
     await expect(
-      page.getByText("Checking calendar integrations...")
+      page.getByText("Setting up your experience...")
     ).toBeVisible();
-    await expect(page.getByText("Setting up your workspace...")).toBeVisible();
+    await expect(page.getByText("Almost ready...")).toBeVisible();
 
     // Wait for progress to complete (should take ~5 seconds total)
     // The page should transition from first-load to the main app
@@ -92,6 +129,15 @@ test.describe("First-Load Experience", () => {
   });
 
   test("should poll backend for real progress updates", async ({ page }) => {
+    // Reset user data to ensure fresh first-load experience
+    await resetUserProgress(page, TEST_TELEGRAM_ID_POLLING);
+
+    // Clear storage again after reset
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+
     // Listen to network requests BEFORE authentication
     const statusRequests: string[] = [];
     page.on("request", (request) => {

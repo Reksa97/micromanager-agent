@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Sparkles, Calendar, MessageSquare, Brain } from "lucide-react";
+import { Loader2, Sparkles, MessageSquare, Brain } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 interface FirstLoadExperienceProps {
@@ -21,26 +21,26 @@ export function FirstLoadExperience({ userName, onComplete }: FirstLoadExperienc
   const [steps, setSteps] = useState<LoadingStep[]>([
     {
       id: "analyzing",
-      label: "Analyzing your profile...",
+      label: "Getting to know you...",
       icon: <Brain className="h-5 w-5" />,
       completed: false,
     },
     {
       id: "generating",
-      label: "Generating personalized greeting...",
+      label: "Preparing your assistant...",
       icon: <MessageSquare className="h-5 w-5" />,
       completed: false,
     },
     {
       id: "checking",
-      label: "Checking calendar integrations...",
-      icon: <Calendar className="h-5 w-5" />,
+      label: "Setting up your experience...",
+      icon: <Sparkles className="h-5 w-5" />,
       completed: false,
     },
     {
       id: "ready",
-      label: "Setting up your workspace...",
-      icon: <Sparkles className="h-5 w-5" />,
+      label: "Almost ready...",
+      icon: <Loader2 className="h-5 w-5" />,
       completed: false,
     },
   ]);
