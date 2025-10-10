@@ -205,43 +205,17 @@ const handler = createMcpHandler(
 );
 
 const verifyToken = async (
-  req: Request,
+  _req: Request,
   bearerToken?: string
 ): Promise<AuthInfo | undefined> => {
   console.log("[MCP Auth] Received request with token:", {
     hasBearerToken: !!bearerToken,
     tokenPreview: bearerToken ? bearerToken.substring(0, 20) + "..." : "none",
-    userId: req.headers.get("user-id"),
-    hasGoogleToken: !!req.headers.get("google-access-token"),
   });
 
   if (!bearerToken) {
     console.error("Bearer token is required");
     return undefined;
-  }
-
-  // Check for simple __TEST_VALUE__ token (origin/main compatibility)
-  if (bearerToken.startsWith("__TEST_VALUE__")) {
-    const userId = req.headers.get("user-id");
-    if (!userId) {
-      console.error("User ID is required in headers");
-      return undefined;
-    }
-
-    const googleAccessToken = req.headers.get("google-access-token");
-    console.log("[MCP Auth] Using simple __TEST_VALUE__ auth:", {
-      userId,
-      hasGoogleToken: !!googleAccessToken,
-    });
-
-    return {
-      token: bearerToken,
-      scopes: ["read:user-context", "write:user-context"],
-      clientId: userId,
-      extra: {
-        googleAccessToken: googleAccessToken || undefined,
-      },
-    };
   }
 
   // Check for development API key (never expires, hardcoded test user)
@@ -260,7 +234,8 @@ const verifyToken = async (
     // Fallback to env var if no DB token
     if (!googleAccessToken) {
       console.log("[MCP Dev Auth] No DB token, falling back to env var");
-      googleAccessToken = process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING ?? null;
+      googleAccessToken =
+        process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING ?? null;
     } else {
       console.log("[MCP Dev Auth] Using DB token (auto-refreshed if needed)");
     }
@@ -282,6 +257,12 @@ const verifyToken = async (
     console.error("Invalid or expired MCP token");
     return undefined;
   }
+
+  console.log("[MCP Auth] Verified token", {
+    userId: payload.userId,
+    googleAccessToken: payload.googleAccessToken?.substring(0, 20) + "...",
+    hasGoogleAccessToken: !!payload.googleAccessToken,
+  });
 
   return {
     token: bearerToken,

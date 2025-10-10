@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await unstable_update({ ...session })
+  await unstable_update({ ...session });
 
   const json = await request.json().catch(() => null);
   const parseResult = requestSchema.safeParse(json);
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     });
 
     const model = MODELS.text;
-    const tools = await getBackendTools(userId, session.googleAccessToken);
+    const tools = await getBackendTools(userId);
     const micromanagerAgentPrompt = formatMicromanagerChatPrompt({
       userContextDoc,
       userMessageHistory,
@@ -148,7 +148,7 @@ export async function GET() {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await unstable_update({ ...session })
+  await unstable_update({ ...session });
 
   const messages = await getRecentMessages(session.user.id, 100);
   return NextResponse.json({ messages });

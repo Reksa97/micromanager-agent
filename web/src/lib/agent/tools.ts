@@ -1,16 +1,6 @@
-import { hostedMcpTool, Tool, tool } from "@openai/agents";
-import { z } from "zod";
+import { hostedMcpTool, Tool } from "@openai/agents";
 
-export const getWeatherTool = tool({
-  name: "get_weather",
-  description: "Get the weather for a given city",
-  parameters: z.object({ city: z.string() }),
-  async execute({ city }) {
-    return `The weather in ${city} is sunny and 25 degrees Celsius.`;
-  },
-});
-
-export const micromanagerMCP = (userId: string, googleAccessToken?: string | null) => {
+export const micromanagerMCP = (mcpAuthToken: string) => {
   if (!process.env.NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL) {
     throw new Error("MICROMANAGER_MCP_SERVER_URL is not set");
   }
@@ -18,25 +8,22 @@ export const micromanagerMCP = (userId: string, googleAccessToken?: string | nul
     "Using MCP server",
     process.env.NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL,
     {
-      userId,
-      hasGoogleToken: !!googleAccessToken,
+      mcpAuthToken: mcpAuthToken.substring(0, 6) + "...",
     }
   );
-
-  // Use simple token auth like origin/main
-  const auth = `Bearer __TEST_VALUE__`;
+  if (!mcpAuthToken) {
+    throw new Error("MCP authentication token is required");
+  }
   return hostedMcpTool({
     serverLabel: "micromanager",
     serverUrl: process.env.NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL,
-    authorization: auth,
+    authorization: mcpAuthToken,
     headers: {
-      "user-id": userId,
-      "google-access-token": googleAccessToken ?? "",
-      authorization: auth,
+      authorization: `Bearer ${mcpAuthToken}`,
     },
   });
 };
 
-export const getFrontendTools = (userId: string, googleAccessToken?: string | null): Tool[] => {
-  return [micromanagerMCP(userId, googleAccessToken), getWeatherTool];
+export const getFrontendTools = (mcpAuthToken: string): Tool[] => {
+  return [micromanagerMCP(mcpAuthToken)];
 };
