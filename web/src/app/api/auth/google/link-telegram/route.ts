@@ -173,8 +173,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Move the Google account to the Telegram user
-    console.log("[Link Telegram] Step 5: Moving Google account from user", googleUserIdStr, "to", telegramUserId);
+    // 5. Remove email from Google user (to avoid unique constraint violation)
+    console.log("[Link Telegram] Step 5: Removing email from Google user to avoid duplicate:", googleUserIdStr);
+    const googleUserUpdateResult = await db.collection("users").updateOne(
+      { _id: new ObjectId(googleUserIdStr) },
+      {
+        $unset: {
+          email: "",
+        },
+        $set: {
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    console.log("[Link Telegram] Google user email removal result:", {
+      matched: googleUserUpdateResult.matchedCount,
+      modified: googleUserUpdateResult.modifiedCount,
+    });
+
+    // 6. Move the Google account to the Telegram user
+    console.log("[Link Telegram] Step 6: Moving Google account from user", googleUserIdStr, "to", telegramUserId);
     const updateResult = await db.collection("accounts").updateOne(
       { _id: googleAccount._id },
       {
@@ -190,8 +209,8 @@ export async function POST(req: NextRequest) {
       modified: updateResult.modifiedCount,
     });
 
-    // 6. Update Telegram user with email
-    console.log("[Link Telegram] Step 6: Updating Telegram user with email:", session.user.email);
+    // 7. Update Telegram user with email
+    console.log("[Link Telegram] Step 7: Updating Telegram user with email:", session.user.email);
     const userUpdateResult = await db.collection("users").updateOne(
       { _id: new ObjectId(telegramUserId) },
       {
