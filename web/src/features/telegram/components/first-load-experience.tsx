@@ -54,7 +54,51 @@ export function FirstLoadExperience({ userName, onComplete }: FirstLoadExperienc
 
     let pollingInterval: NodeJS.Timeout | null = null;
 
-    // Initialize first-load tasks
+    // Start polling immediately (don't wait for init to complete)
+    const startPolling = () => {
+      console.log("[First Load] Starting polling");
+
+      pollingInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch("/api/first-load/status", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (!statusResponse.ok) {
+            throw new Error("Failed to get status");
+          }
+
+          const status = await statusResponse.json();
+
+          // Update steps based on completed steps from backend
+          setSteps((prev) =>
+            prev.map((step) => ({
+              ...step,
+              completed: status.completedSteps.includes(step.id),
+            }))
+          );
+
+          // Update current step count
+          setCurrentStep(status.completedSteps.length);
+
+          // If complete, stop polling and call onComplete
+          if (status.isComplete) {
+            if (pollingInterval) {
+              clearInterval(pollingInterval);
+            }
+            setTimeout(() => {
+              onComplete();
+            }, 500);
+          }
+        } catch (error) {
+          console.error("[First Load] Error polling status:", error);
+        }
+      }, 500); // Poll every 500ms
+    };
+
+    // Initialize first-load tasks (fire-and-forget)
     const initFirstLoad = async () => {
       try {
         const response = await fetch("/api/first-load/init", {
@@ -68,53 +112,15 @@ export function FirstLoadExperience({ userName, onComplete }: FirstLoadExperienc
           throw new Error("Failed to initialize first-load");
         }
 
-        console.log("[First Load] Initialized, starting polling");
-
-        // Start polling for progress
-        pollingInterval = setInterval(async () => {
-          try {
-            const statusResponse = await fetch("/api/first-load/status", {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            });
-
-            if (!statusResponse.ok) {
-              throw new Error("Failed to get status");
-            }
-
-            const status = await statusResponse.json();
-
-            // Update steps based on completed steps from backend
-            setSteps((prev) =>
-              prev.map((step) => ({
-                ...step,
-                completed: status.completedSteps.includes(step.id),
-              }))
-            );
-
-            // Update current step count
-            setCurrentStep(status.completedSteps.length);
-
-            // If complete, stop polling and call onComplete
-            if (status.isComplete) {
-              if (pollingInterval) {
-                clearInterval(pollingInterval);
-              }
-              setTimeout(() => {
-                onComplete();
-              }, 500);
-            }
-          } catch (error) {
-            console.error("[First Load] Error polling status:", error);
-          }
-        }, 500); // Poll every 500ms
+        console.log("[First Load] Initialization complete");
       } catch (error) {
         console.error("[First Load] Error initializing:", error);
       }
     };
 
-    initFirstLoad();
+    // Start polling immediately and trigger init in parallel
+    startPolling();
+    initFirstLoad(); // Don't await - let it run in background
 
     // Cleanup
     return () => {

@@ -3,6 +3,7 @@
  * Persists progress to database for reliability across serverless instances
  */
 
+import { ObjectId } from "mongodb";
 import { getMongoClient } from "@/lib/db";
 
 export type FirstLoadStep = "analyzing" | "generating" | "checking" | "ready" | "complete";
@@ -19,7 +20,7 @@ export async function initProgress(userId: string): Promise<void> {
   const db = client.db();
 
   await db.collection("users").updateOne(
-    { telegramId: parseInt(userId) },
+    { _id: new ObjectId(userId) },
     {
       $set: {
         firstLoadProgress: {
@@ -37,7 +38,7 @@ export async function updateProgress(userId: string, step: FirstLoadStep): Promi
   const client = await getMongoClient();
   const db = client.db();
 
-  const user = await db.collection("users").findOne({ telegramId: parseInt(userId) });
+  const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
   if (!user?.firstLoadProgress) return;
 
   const completedSteps = user.firstLoadProgress.completedSteps || [];
@@ -46,7 +47,7 @@ export async function updateProgress(userId: string, step: FirstLoadStep): Promi
   }
 
   await db.collection("users").updateOne(
-    { telegramId: parseInt(userId) },
+    { _id: new ObjectId(userId) },
     {
       $set: {
         "firstLoadProgress.currentStep": step,
@@ -61,7 +62,7 @@ export async function getProgress(userId: string): Promise<ProgressState | null>
   const client = await getMongoClient();
   const db = client.db();
 
-  const user = await db.collection("users").findOne({ telegramId: parseInt(userId) });
+  const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
   if (!user?.firstLoadProgress) return null;
 
   return {
@@ -77,7 +78,7 @@ export async function completeProgress(userId: string): Promise<void> {
   const db = client.db();
 
   await db.collection("users").updateOne(
-    { telegramId: parseInt(userId) },
+    { _id: new ObjectId(userId) },
     {
       $set: {
         "firstLoadProgress.currentStep": "complete",
@@ -94,7 +95,7 @@ export async function clearProgress(userId: string): Promise<void> {
   const db = client.db();
 
   await db.collection("users").updateOne(
-    { telegramId: parseInt(userId) },
+    { _id: new ObjectId(userId) },
     {
       $unset: {
         firstLoadProgress: "",

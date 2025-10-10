@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import { ObjectId } from "mongodb";
 import { env } from "@/env";
 import { getMongoClient } from "@/lib/db";
 
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     // Reset user progress
     const result = await db.collection("users").updateOne(
-      { telegramId: parseInt(userId) },
+      { _id: new ObjectId(userId) },
       {
         $set: {
           level: 1,
