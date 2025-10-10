@@ -3,16 +3,20 @@
 import { useEffect, useState } from "react";
 import { miniApp, themeParams, viewport } from "@telegram-apps/sdk-react";
 import { TelegramChatPanel } from "@/features/telegram/components/telegram-chat-panel";
+import { LinkedAccountsDialog } from "@/features/telegram/components/linked-accounts-dialog";
+import { FirstLoadExperience } from "@/features/telegram/components/first-load-experience";
 import { Badge } from "@/components/ui/badge";
 import { BuildInfo } from "@/components/build-info";
 import { Loader2 } from "lucide-react";
 
 export function TelegramMiniAppAuthenticated() {
   const [isReady, setIsReady] = useState(false);
+  const [showFirstLoad, setShowFirstLoad] = useState(false);
   const [user, setUser] = useState<{
     id: string;
     name: string;
     role: "user" | "admin";
+    hasCompletedFirstLoad?: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -69,7 +73,13 @@ export function TelegramMiniAppAuthenticated() {
                 id: profile.id,
                 name: profile.name,
                 role: profile.tier === "admin" ? "admin" : "user",
+                hasCompletedFirstLoad: profile.hasCompletedFirstLoad,
               });
+
+              // Show first load experience if user hasn't seen it
+              if (!profile.hasCompletedFirstLoad) {
+                setShowFirstLoad(true);
+              }
             }
           }
         }
@@ -84,6 +94,38 @@ export function TelegramMiniAppAuthenticated() {
     initApp();
   }, []);
 
+  const handleFirstLoadComplete = async () => {
+    // Mark first load as complete
+    const token = localStorage.getItem("telegram-token");
+    if (token && user?.id) {
+      try {
+        // Mark first-load as complete in DB
+        await fetch("/api/user/complete-first-load", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        // Trigger first-load greeting workflow (sends welcome message)
+        console.log("[First Load] Triggering greeting workflow...");
+        await fetch("/api/workflow/first-load-greeting", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        setUser((prev) => prev ? { ...prev, hasCompletedFirstLoad: true } : null);
+        setShowFirstLoad(false);
+      } catch (error) {
+        console.error("Failed to complete first load:", error);
+        // Still hide the first load experience
+        setShowFirstLoad(false);
+      }
+    }
+  };
+
   if (!isReady) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -92,6 +134,16 @@ export function TelegramMiniAppAuthenticated() {
           <p className="text-sm text-muted-foreground">Loading Mini App...</p>
         </div>
       </div>
+    );
+  }
+
+  // Show first load experience
+  if (showFirstLoad) {
+    return (
+      <FirstLoadExperience
+        userName={user?.name}
+        onComplete={handleFirstLoadComplete}
+      />
     );
   }
 
@@ -115,6 +167,7 @@ export function TelegramMiniAppAuthenticated() {
             <span className="text-sm text-muted-foreground">
               {user?.name ?? "User"}
             </span>
+            {user?.id && <LinkedAccountsDialog userId={user.id} />}
           </div>
         </div>
         {/* Build info in top corner */}

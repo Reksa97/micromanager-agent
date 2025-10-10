@@ -53,9 +53,39 @@ npm run setup-telegram -- https://yoursubdomain.vercel.app
 
 ## Deployment
 
+### Vercel
+
 Use Vercel free hobby tier, connect to your Github and start a deployment for your repo
 
 ## Tools for developers
+
+### OpenAI Agent Builder
+
+Workflows can be built and developed visually at https://platform.openai.com/agent-builder
+
+Set up env vars `MCP_DEVELOPMENT_API_KEY` and `MCP_DEV_TEST_USER_ID` and use the API key for the agent builder MCP authentication so it can access the test user context.
+
+Code -> Agents SDK -> Copy Typescript code -> paste in workflow file at `web/src/lib/agent/workflows` (create file if new workflow)
+
+Move the MCP and agent initialization inside `runWorkflow`. Make sure the function returns the data you need. Include `user_id` in the input parameters and include the dynamic auth params. End result should be something like this:
+
+```
+type WorkflowInput = { input_as_text: string; user_id: string };
+
+// Main code entrypoint
+export const runWorkflow = async (workflow: WorkflowInput) => {
+  // Tool definitions
+  const mcp = hostedMcpTool({
+    serverLabel: "micromanager_mcp",
+    allowedTools: [
+        ...
+    ],
+    requireApproval: "never",
+    ...(await getHostedMcpParams(workflow.user_id)),
+  });
+  const micromanager = new Agent({
+    ...
+```
 
 ### Cloudflare Tunnel
 

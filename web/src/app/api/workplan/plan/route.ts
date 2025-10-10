@@ -4,15 +4,6 @@ import { auth } from "@/auth";
 import { OpenAIAgent, runOpenAIAgent } from "@/lib/openai";
 import { MODELS } from "@/lib/utils";
 
-const eventSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  start: z.string().optional(),
-  end: z.string().optional(),
-  location: z.string().optional(),
-  description: z.string().optional(),
-});
-
 const bodySchema = z.object({
   event: z.object({
     id: z.string(),

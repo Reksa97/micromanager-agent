@@ -61,6 +61,75 @@ export async function linkTelegramUserToAccount(
   );
 }
 
+/**
+ * Link a Telegram user to a Google account
+ * Creates or updates the Google OAuth account in the accounts collection
+ */
+export async function linkTelegramUserToGoogle(
+  telegramId: number,
+  googleAccount: {
+    providerAccountId: string;
+    access_token: string;
+    refresh_token: string;
+    expires_at: number;
+    token_type: string;
+    scope: string;
+    id_token?: string;
+    email?: string;
+  }
+): Promise<void> {
+  const client = await getMongoClient();
+  const usersCollection = client.db().collection("users");
+  const accountsCollection = client.db().collection("accounts");
+
+  // Find user by telegramId
+  const user = await usersCollection.findOne({ telegramId });
+
+  if (!user) {
+    throw new Error(`No user found with telegramId: ${telegramId}`);
+  }
+
+  const userId = user._id.toString();
+
+  // Update user with Google email if provided
+  if (googleAccount.email) {
+    await usersCollection.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          email: googleAccount.email,
+          updatedAt: new Date(),
+        },
+      }
+    );
+  }
+
+  // Upsert Google account
+  await accountsCollection.updateOne(
+    { userId, provider: "google" },
+    {
+      $set: {
+        userId,
+        type: "oauth",
+        provider: "google",
+        providerAccountId: googleAccount.providerAccountId,
+        access_token: googleAccount.access_token,
+        refresh_token: googleAccount.refresh_token,
+        expires_at: googleAccount.expires_at,
+        token_type: googleAccount.token_type,
+        scope: googleAccount.scope,
+        id_token: googleAccount.id_token,
+      },
+    },
+    { upsert: true }
+  );
+
+  console.log(`Linked Telegram user ${telegramId} to Google account`, {
+    userId,
+    email: googleAccount.email,
+  });
+}
+
 let botInstance: Bot | null = null;
 let botInitialized = false;
 

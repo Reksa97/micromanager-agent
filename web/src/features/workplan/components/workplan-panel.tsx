@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Calendar, CheckCircle2, Clock, MapPin, ListTodo, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -357,7 +357,6 @@ function generatePlan(evt: CalendarEvent, role: string): string[] {
   const t = evt.title.toLowerCase();
 
   const isOrganizerRole = /organizer|speaker|host|presenter|facilitator/.test(r);
-  const isAttendeeRole = /attend/.test(r) || !isOrganizerRole;
 
   if (t.includes("sync") || t.includes("meeting") || t.includes("standup")) {
     if (isOrganizerRole) {
