@@ -12,6 +12,7 @@ const serverSchema = z.object({
   MCP_DEVELOPMENT_API_KEY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  CRON_SECRET: z.string().optional(),
 });
 
 const resolvedAuthSecret =
@@ -57,4 +58,5 @@ export const env = serverSchema.parse({
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   TELEGRAM_SERVER_SECRET: process.env.TELEGRAM_SERVER_SECRET,
+  CRON_SECRET: process.env.CRON_SECRET,
 });

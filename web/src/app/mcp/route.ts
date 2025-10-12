@@ -157,12 +157,13 @@ const handler = createMcpHandler(
     );
     server.tool(
       "update_user_context",
-      "Update the user context or ",
+      "Update user context with nested data. Use dot notation for paths (e.g., 'tasks.0.title'). Value can be any type including objects and arrays. Use contextDeletes to remove fields.",
       {
         contextUpdates: z
-          .array(z.object({ path: z.string(), value: z.string() }))
-          .optional(),
-        contextDeletes: z.array(z.string()).optional(),
+          .array(z.object({ path: z.string(), value: z.any() }))
+          .optional()
+          .describe("Array of updates. Path uses dot notation. Value accepts any type (string, number, object, array, etc.)"),
+        contextDeletes: z.array(z.string()).optional().describe("Array of paths to delete (dot notation)"),
       },
       async ({ contextUpdates, contextDeletes }, extra) => {
         // Check scope authorization

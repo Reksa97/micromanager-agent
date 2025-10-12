@@ -281,6 +281,7 @@ export async function POST(req: NextRequest) {
           ? `${telegramUser.first_name} ${telegramUser.last_name || ""}`.trim()
           : telegramUser.username,
         username: telegramUser.username,
+        email: telegramUser.username || `telegram_${telegramUser.id}@telegram.local`,
         tier: tierToUse,
         createdAt: new Date(),
         lastLogin: new Date(),
@@ -303,7 +304,7 @@ export async function POST(req: NextRequest) {
     await upsertTelegramUser({
       telegramId: telegramUser.id,
       id: userId,
-      email: telegramUser.username,
+      email: telegramUser.username || `telegram_${telegramUser.id}@telegram.local`,
       telegramChatId: resolvedChatId,
       name: telegramUser.first_name || telegramUser.username || "User",
       lastLogin: new Date(),

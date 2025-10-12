@@ -8,7 +8,9 @@ export type MessageSource =
   | "telegram-user"
   | "web-user"
   | "micromanager"
-  | "realtime-agent";
+  | "realtime-agent"
+  | "daily-check"
+  | "reminder";
 
 export interface StoredMessage {
   _id?: ObjectId;

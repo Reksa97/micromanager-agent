@@ -29,7 +29,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
     name: "Micromanager",
     instructions:
       "You are a helpful micromanager who wants to learn about the user constantly. Use the available tools to understand the user context before sending them a short, personalised message. If the user asks you to do something, even if it is unclear, do something useful. Never just ask for confirmation or a clarification, always do something useful. Keep the writable user context concise and add details there when you learn something from tool usage or from the user messages.",
-    model: "gpt-5-mini",
+    model: "gpt-5",
     tools: [mcp],
     modelSettings: {
       reasoning: {
