@@ -14,7 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -31,6 +30,25 @@ const DEFAULT_TICKER_CONTENT = {
   assistant: "",
   tools: "",
 } as const;
+
+// Helper function to get tool short name with emoji
+const getToolShortName = (toolName: string): string => {
+  const toolNameMap: Record<string, string> = {
+    get_user_context: "📖 Read Context",
+    update_user_context: "✏️ Update Context",
+    get_conversation_messages: "💬 Messages",
+    "list-calendars": "📅 List Calendars",
+    "list-events": "📅 List Events",
+    "search-events": "🔍 Search Events",
+    "get-event": "📝 Get Event",
+    "create-event": "✨ Create Event",
+    "update-event": "🔄 Update Event",
+    "delete-event": "🗑️ Delete Event",
+    "get-freebusy": "⏰ Free/Busy",
+    "get-current-time": "🕐 Current Time",
+  };
+  return toolNameMap[toolName] || `🔧 ${toolName}`;
+};
 
 interface TelegramChatPanelProps {
   userId: string;
@@ -60,7 +78,9 @@ export function TelegramChatPanel({
       updatedAt: string;
     }>
   >([]);
-  const [selectedTool, setSelectedTool] = useState<typeof toolCallHistory[0] | null>(null);
+  const [selectedTool, setSelectedTool] = useState<
+    (typeof toolCallHistory)[0] | null
+  >(null);
   const [isToolModalOpen, setIsToolModalOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -441,7 +461,7 @@ export function TelegramChatPanel({
                 <Badge
                   variant={profile?.tier === "paid" ? "secondary" : "outline"}
                 >
-                  {profile?.tier?.toUpperCase() || "FREE"}
+                  {profile?.tier?.toUpperCase() ?? "FREE"}
                 </Badge>
                 <span className="text-sm font-medium text-foreground">
                   {displayIdentity}
@@ -570,7 +590,7 @@ export function TelegramChatPanel({
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {selectedTool?.displayTitle}
+              {selectedTool && getToolShortName(selectedTool.toolName)}
               {selectedTool && (
                 <Badge
                   variant={
@@ -585,15 +605,22 @@ export function TelegramChatPanel({
                 </Badge>
               )}
             </DialogTitle>
-            {selectedTool?.displayDescription && (
-              <DialogDescription>
-                {selectedTool.displayDescription}
-              </DialogDescription>
-            )}
           </DialogHeader>
 
           {selectedTool && (
             <div className="space-y-4">
+              {/* Description */}
+              {selectedTool.displayTitle && (
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">
+                    Log Message
+                  </h4>
+                  <p className="text-sm text-foreground/90 italic">
+                    {selectedTool.displayTitle}
+                  </p>
+                </div>
+              )}
+
               {/* Tool Name */}
               <div>
                 <h4 className="text-sm font-semibold text-muted-foreground mb-1">
@@ -609,18 +636,18 @@ export function TelegramChatPanel({
                 <h4 className="text-sm font-semibold text-muted-foreground mb-1">
                   Arguments
                 </h4>
-                <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap break-words">
                   {JSON.stringify(selectedTool.arguments, null, 2)}
                 </pre>
               </div>
 
-              {/* Result */}
+              {/* Response */}
               {selectedTool.result !== undefined && (
                 <div>
                   <h4 className="text-sm font-semibold text-muted-foreground mb-1">
-                    Result
+                    Response
                   </h4>
-                  <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                  <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap break-words">
                     {JSON.stringify(selectedTool.result, null, 2)}
                   </pre>
                 </div>
@@ -632,7 +659,7 @@ export function TelegramChatPanel({
                   <h4 className="text-sm font-semibold text-destructive mb-1">
                     Error
                   </h4>
-                  <pre className="text-xs bg-destructive/10 text-destructive p-3 rounded overflow-x-auto">
+                  <pre className="text-xs bg-destructive/10 text-destructive p-3 rounded whitespace-pre-wrap break-words">
                     {selectedTool.error}
                   </pre>
                 </div>
@@ -739,7 +766,7 @@ function StatusTickerSection({
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-cyan-500/10 to-blue-500/10" />
         <div className="relative z-10">
-          <TickerRow label="CMD" text={userText} />
+          <TickerRow label="USER" text={userText} />
         </div>
       </div>
 
@@ -763,7 +790,7 @@ function StatusTickerSection({
         />
         <div className="relative z-10">
           <TickerRow
-            label="MiM"
+            label="AGENT"
             text={assistantText}
             isAnimating={isWorkflowActive}
             hasError={hasError}
@@ -851,28 +878,35 @@ function TickerRow({
 
   return (
     <div className="flex flex-col gap-1 px-4 py-4">
-      <div className="flex flex-row items-center gap-4">
-        <span className="text-[10px] text-center font-semibold uppercase tracking-widest text-muted-foreground/80 shrink-0 min-w-12">
+      <div className="flex flex-row gap-4 items-start">
+        <span className="pt-1 text-[10px] text-center font-semibold uppercase tracking-widest text-muted-foreground/80 shrink-0 min-w-10">
           {label}
         </span>
         {isToolsRow ? (
-          <div className="flex items-center gap-2 flex-1 py-2 overflow-x-auto">
+          <div className="flex items-start gap-2 flex-1 w-full">
             {isAnimating && toolCallHistory.length > 0 ? (
-              <div className="flex flex-row gap-2 flex-nowrap">
+              <div className="flex flex-col gap-2 w-full">
                 {toolCallHistory.map((tool, index) => (
                   <div
                     key={`${tool.createdAt}-${index}`}
                     onClick={() => onToolClick?.(tool)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background/60 border border-border/40 shrink-0 cursor-pointer hover:bg-background/80 transition-colors"
+                    className="flex flex-col gap-1 px-3 py-2 rounded-lg bg-background/60 border border-border/40 cursor-pointer hover:bg-background/80 transition-colors w-full"
                   >
-                    <span className="text-xs font-medium text-foreground/90 whitespace-nowrap">
+                    {/* Row 1: Short name with emoji + status emoji */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-foreground">
+                        {getToolShortName(tool.toolName)}
+                      </span>
+                      <span
+                        className={cn("text-sm", getStatusColor(tool.status))}
+                      >
+                        {getStatusIcon(tool.status)}
+                      </span>
+                    </div>
+                    {/* Row 2: Agent's custom description in italic */}
+                    <div className="text-xs italic text-muted-foreground">
                       {tool.displayTitle}
-                    </span>
-                    <span
-                      className={cn("text-sm", getStatusColor(tool.status))}
-                    >
-                      {getStatusIcon(tool.status)}
-                    </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -908,21 +942,28 @@ function TickerRow({
                 />
               </span>
             ) : toolCallHistory.length > 0 ? (
-              <div className="flex flex-row gap-2 flex-nowrap">
+              <div className="flex flex-col gap-2 w-full">
                 {toolCallHistory.map((tool, index) => (
                   <div
                     key={`${tool.createdAt}-${index}`}
                     onClick={() => onToolClick?.(tool)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background/60 border border-border/40 shrink-0 cursor-pointer hover:bg-background/80 transition-colors"
+                    className="flex flex-col gap-1 px-3 py-2 rounded-lg bg-background/60 border border-border/40 cursor-pointer hover:bg-background/80 transition-colors w-full"
                   >
-                    <span className="text-xs font-medium text-foreground/90 whitespace-nowrap">
+                    {/* Row 1: Short name with emoji + status emoji */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-foreground">
+                        {getToolShortName(tool.toolName)}
+                      </span>
+                      <span
+                        className={cn("text-sm", getStatusColor(tool.status))}
+                      >
+                        {getStatusIcon(tool.status)}
+                      </span>
+                    </div>
+                    {/* Row 2: Agent's custom description in italic */}
+                    <div className="text-xs italic text-muted-foreground">
                       {tool.displayTitle}
-                    </span>
-                    <span
-                      className={cn("text-sm", getStatusColor(tool.status))}
-                    >
-                      {getStatusIcon(tool.status)}
-                    </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -931,7 +972,7 @@ function TickerRow({
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 ml-1 flex-1">
             {isAnimating && !text ? (
               <span className="inline-flex gap-1.5">
                 <span
@@ -967,7 +1008,7 @@ function TickerRow({
               <>
                 <span
                   className={cn(
-                    "text-sm leading-relaxed font-normal text-foreground/90 flex-1",
+                    "text-sm leading-relaxed font-normal text-foreground/90 flex-1 max-w-[calc(100vw-123px)] text-wrap break-words",
                     isAnimating && "opacity-60 animate-pulse",
                     hasError && "text-red-500/90",
                     className

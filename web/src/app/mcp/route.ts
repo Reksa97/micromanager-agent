@@ -565,7 +565,12 @@ const handler = createMcpHandler(
             | undefined;
           const toolName = tool.name;
 
-          console.log("[MCP] Tool called", { toolName, args, extra });
+          console.log("[MCP] Tool called", {
+            toolName,
+            args,
+            extra,
+            workflowRunId,
+          });
 
           const { log_message, tool_args } = args;
 
@@ -798,11 +803,10 @@ const verifyToken = async (
 
   console.log("[MCP Auth] Verified token", {
     userId: payload.userId,
-    googleAccessToken: payload.googleAccessToken?.substring(0, 20) + "...",
     hasGoogleAccessToken: !!payload.googleAccessToken,
-    tokenScopes: payload.scopes,
-    assignedScopes: userScopes,
     workflowRunId: payload.workflowRunId,
+    tokenScopes: payload.scopes,
+    assignedScopes: JSON.stringify(userScopes),
   });
 
   return {
