@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     const result = await runWorkflow({
       input_as_text: `User "${userName}" logged in for the first time. Write a personalized introduction message as their micromanager assistant. Be warm, brief, and engaging.`,
       user_id: userId as string,
+      source: "web",
     });
 
     const greetingMessage = result.output_text;

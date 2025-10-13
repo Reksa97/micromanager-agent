@@ -8,10 +8,10 @@ const serverSchema = z.object({
   JWT_SECRET: z.instanceof(Uint8Array),
   OPENAI_PROJECT: z.string().optional(),
   ALLOW_USER_REGISTRATION: z.boolean(),
-  TELEGRAM_DEV_MOCK_SECRET: z.string().optional(),
   MCP_DEVELOPMENT_API_KEY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  CRON_SECRET: z.string().optional(),
 });
 
 const resolvedAuthSecret =
@@ -52,9 +52,9 @@ export const env = serverSchema.parse({
   JWT_SECRET: new TextEncoder().encode(resolvedAuthSecret),
   OPENAI_PROJECT: process.env.OPENAI_PROJECT,
   ALLOW_USER_REGISTRATION: allowUserRegistration,
-  TELEGRAM_DEV_MOCK_SECRET: process.env.TELEGRAM_DEV_MOCK_SECRET,
   MCP_DEVELOPMENT_API_KEY: process.env.MCP_DEVELOPMENT_API_KEY,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   TELEGRAM_SERVER_SECRET: process.env.TELEGRAM_SERVER_SECRET,
+  CRON_SECRET: process.env.CRON_SECRET,
 });

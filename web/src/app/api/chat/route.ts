@@ -8,14 +8,7 @@ import {
   updateMessage,
 } from "@/lib/conversations";
 import { notifyTelegramUser } from "@/lib/telegram/bot";
-import { OpenAIAgent, runOpenAIAgent } from "@/lib/openai";
-import { MODELS } from "@/lib/utils";
-import { getUserContextDocument } from "@/lib/user-context";
-import {
-  formatMicromanagerChatPrompt,
-  MICROMANAGER_CHAT_SYSTEM_PROMPT,
-} from "@/lib/agent/prompts";
-import { getBackendTools } from "@/lib/agent/tools.server";
+import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
 
 const requestSchema = z.object({
   message: z.string().min(1),
@@ -46,11 +39,6 @@ export async function POST(request: Request) {
   let activeAssistantMessageId: string | null = null;
 
   try {
-    const [userMessageHistory, userContextDoc] = await Promise.all([
-      getRecentMessages(userId, 10),
-      getUserContextDocument(userId),
-    ]);
-
     let now = new Date();
     await insertMessage({
       userId,
@@ -82,35 +70,21 @@ export async function POST(request: Request) {
       updatedAt: now,
     });
 
-    const model = MODELS.text;
-    const tools = await getBackendTools(userId);
-    const micromanagerAgentPrompt = formatMicromanagerChatPrompt({
-      userContextDoc,
-      userMessageHistory,
-      userMessage,
-    });
-
-    const agent = new OpenAIAgent({
-      name: "micromanager",
-      instructions: MICROMANAGER_CHAT_SYSTEM_PROMPT,
-      model,
-      tools,
-    });
-
-    const agentResult = await runOpenAIAgent(agent, micromanagerAgentPrompt);
-
-    console.log("Agent result", {
-      model,
-      newItems: agentResult.newItems,
-      activeAssistantMessageId,
-      micromanagerAgentPrompt,
+    const workflowResult = await runWorkflow({
+      input_as_text: userMessage,
+      user_id: userId,
+      source: "web",
+      usageTaskType: "chat",
     });
 
     const finalContent =
-      agentResult.finalOutput?.trim() ?? "No final output from agent";
+      workflowResult.output_text?.trim() ?? "No final output from workflow";
+    const hasError = "error" in workflowResult && workflowResult.error === true;
+
     await updateMessage(activeAssistantMessageId, {
       content: finalContent,
       type: "text",
+      metadata: hasError ? { error: true } : undefined,
     });
 
     // Try to notify Telegram user about the assistant response

@@ -15,19 +15,59 @@ cd web && npm run test   # Run Playwright E2E tests
 
 ## Commands
 ```bash
-npm run dev     # Port 3000
+npm run dev     # Port 3000, HTTPS enabled (https://localhost:3000)
 npm run build   # Test before push!
 npm run test    # Playwright E2E
 npm run lint    # Fix errors
 ```
 
+## Playwright MCP Testing
+**Dev server**: `https://localhost:3000` (HTTPS enabled by default)
+
+### Default Test URL (Test Login)
+**Use this URL by default**: `https://localhost:3000/test-login`
+
+### Test Login - Real Authentication
+The `/test-login` page bridges next-auth to the Telegram Mini App interface:
+- **Uses real credentials** - Email + bcrypt password (NO hardcoded passwords!)
+- **Works in dev AND production** - Same authentication method everywhere
+- **Generates Telegram-compatible JWT** - Assigns fake telegramId if needed
+- **Any registered user can test** - No Telegram account required
+
+### Test Users (E2E)
+Create these users via `/register` for E2E testing:
+- `test1@e2e.local` / `TestPassword123!` - Primary test user
+- `test2@e2e.local` / `TestPassword123!` - Secondary test user
+- `test3@e2e.local` / `TestPassword123!` - Tertiary test user
+
+### Testing Workflow
+1. **Assume server is already running** - DO NOT start `npm run dev` automatically
+2. **Navigate to test-login**: `https://localhost:3000/test-login`
+3. **Enter credentials**: Use real email/password from registered account
+4. **Auto-redirects to `/telegram-app`** - Telegram JWT generated automatically
+5. **If connection fails**: Inform user server is not running
+6. **DO NOT attempt to start dev server** - User will start manually
+
+### Authentication Methods
+1. **Web Dashboard** (`/login`) → Next-auth credentials or Google → Web dashboard
+2. **Telegram Mini App** (`/telegram`) → Telegram initData → Telegram mini app
+3. **Test Login** (`/test-login`) → Next-auth credentials → Telegram mini app (testing bridge)
+
+Example workflow:
+```
+1. User: "test playwright mcp"
+2. Assistant: Navigate to https://localhost:3000/test-login
+3. Enter test credentials (or create account via /register)
+4. Wait for authentication and redirect to /telegram-app
+5. Start testing conversation, tools, etc.
+```
+
 ## Required Env Vars
 ```
 MONGODB_URI=mongodb+srv://...
-AUTH_SECRET=...                    # JWT secret
+AUTH_SECRET=...                    # JWT secret + next-auth
 OPENAI_API_KEY=sk-proj-...         # For workflow
 TELEGRAM_BOT_TOKEN=...             # From @BotFather
-TELEGRAM_DEV_MOCK_SECRET=dev-secret  # For E2E tests
 NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL=https://your-mcp.vercel.app
 ```
 
@@ -94,6 +134,7 @@ Serverless functions terminate after response. Always await async work.
 
 ## Testing
 - E2E tests: `__tests__/e2e/*.spec.ts`
-- Mock auth: `?mock_secret=dev-secret&mock_user_id=888000001`
+- Test auth: `/test-login` with real next-auth credentials
+- Tests auto-create users via `/register` if they don't exist
+- Test credentials: `test1@e2e.local` / `TestPassword123!`
 - Tests reset user data before each run
-- Unique test IDs: 888000001, 888000002, 888000003
