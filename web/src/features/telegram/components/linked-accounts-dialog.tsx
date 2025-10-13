@@ -21,6 +21,7 @@ import {
   Bell,
   BarChart3,
   Trophy,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -162,6 +163,7 @@ export function LinkedAccountsDialog({
     totalRealUsers: number;
   } | null>(null);
   const [showErrorList, setShowErrorList] = useState(false);
+  const [hasChangedNotif, setHasChangedNotif] = useState(false);
   const { toast } = useToast();
 
   const fetchLinkedAccounts = async () => {
@@ -289,6 +291,9 @@ export function LinkedAccountsDialog({
       if (response.ok) {
         const data = await response.json();
 
+        // Mark that user has changed notification settings
+        setHasChangedNotif(true);
+
         // Show success animation
         setShowSaveSuccess(true);
         setTimeout(() => setShowSaveSuccess(false), 2000);
@@ -365,15 +370,27 @@ export function LinkedAccountsDialog({
           <Settings className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Linked Accounts</DialogTitle>
-          <DialogDescription>
-            Manage your connected accounts and integrations
-          </DialogDescription>
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="sticky top-0 bg-background z-10 pb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <DialogTitle>Linked Accounts</DialogTitle>
+              <DialogDescription>
+                Manage your connected accounts and integrations
+              </DialogDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={() => setOpen(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-4 overflow-y-auto pr-2 -mr-2">
+        <div className="space-y-4 pb-4">
           {/* Telegram User Info */}
           {user && (
             <div className="rounded-lg border bg-muted/50 p-4">
@@ -523,8 +540,8 @@ export function LinkedAccountsDialog({
               )}
             </div>
 
-            {/* Timestamp Information */}
-            {taskInfo && (
+            {/* Timestamp Information - only show after user has changed settings */}
+            {hasChangedNotif && taskInfo && (
               <div className="space-y-2 rounded-md bg-muted p-3 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Timezone:</span>
