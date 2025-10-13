@@ -21,6 +21,9 @@ import {
   Bell,
   BarChart3,
   Trophy,
+  Monitor,
+  Sun,
+  Moon,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/components/theme-provider";
 
 interface LinkedAccount {
   provider: string;
@@ -162,6 +166,17 @@ export function LinkedAccountsDialog({
   const [showErrorList, setShowErrorList] = useState(false);
   const [hasChangedNotif, setHasChangedNotif] = useState(false);
   const { toast } = useToast();
+  const { theme, selectedTheme, setTheme } = useTheme();
+  const themeSelectionLabel =
+    selectedTheme === "system"
+      ? "Automatic"
+      : selectedTheme === "dark"
+        ? "Dark"
+        : "Light";
+  const themeHelperText =
+    selectedTheme === "system"
+      ? `Following system preference (${theme === "dark" ? "Dark" : "Light"} mode)`
+      : `Theme locked to ${selectedTheme === "dark" ? "Dark" : "Light"} mode`;
 
   const fetchLinkedAccounts = async () => {
     setLoading(true);
@@ -433,6 +448,62 @@ export function LinkedAccountsDialog({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Appearance */}
+          <div className="space-y-3 rounded-lg border p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
+                {selectedTheme === "dark" ? (
+                  <Moon className="h-5 w-5 text-amber-600 dark:text-amber-200" />
+                ) : selectedTheme === "light" ? (
+                  <Sun className="h-5 w-5 text-amber-600" />
+                ) : (
+                  <Monitor className="h-5 w-5 text-amber-600 dark:text-amber-200" />
+                )}
+              </div>
+              <div>
+                <p className="font-medium">Appearance</p>
+                <p className="text-sm text-muted-foreground">
+                  Choose how the Telegram mini app should look.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="theme-mode">Theme Mode</Label>
+              <Select
+                value={selectedTheme}
+                onValueChange={(value) =>
+                  setTheme(value as "light" | "dark" | "system")
+                }
+              >
+                <SelectTrigger id="theme-mode">
+                  <SelectValue placeholder="Select a theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="system">
+                    <div className="flex items-center gap-2">
+                      <Monitor className="h-4 w-4" />
+                      <span>Automatic</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="light">
+                    <div className="flex items-center gap-2">
+                      <Sun className="h-4 w-4" />
+                      <span>Light</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="dark">
+                    <div className="flex items-center gap-2">
+                      <Moon className="h-4 w-4" />
+                      <span>Dark</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{themeHelperText}</p>
+            </div>
           </div>
 
           {/* Google */}

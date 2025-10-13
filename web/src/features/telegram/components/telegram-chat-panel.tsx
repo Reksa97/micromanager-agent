@@ -289,13 +289,11 @@ export function TelegramChatPanel({
 
             toolCallsArray.sort(
               (a, b) =>
-                new Date(b.createdAt).getTime() -
-                new Date(a.createdAt).getTime()
+                new Date(a.createdAt).getTime() -
+                new Date(b.createdAt).getTime()
             );
 
             setToolCallHistory(toolCallsArray);
-          } else {
-            setToolCallHistory([]);
           }
         }
       } catch (err) {
@@ -350,6 +348,7 @@ export function TelegramChatPanel({
     setInput("");
     setIsLoading(true);
     setError(null);
+    setToolCallHistory([]);
 
     try {
       const token = localStorage.getItem("telegram-token");
@@ -771,23 +770,16 @@ function StatusTickerSection({
       </div>
 
       {/* MM Section with animated gradient */}
-      <div className="relative overflow-hidden">
-        <div
-          className={cn(
-            "absolute inset-0 animate-gradient-slow",
-            hasError
-              ? "bg-[linear-gradient(120deg,hsl(0,70%,50%,0.15),hsl(0,70%,50%,0.25),hsl(0,70%,50%,0.15))]"
-              : "bg-[linear-gradient(120deg,hsl(var(--primary)/0.2),hsl(var(--accent)/0.1),hsl(var(--secondary)/0.25))]"
-          )}
-        />
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-0 animate-gradient-slow",
-            hasError
-              ? "bg-[linear-gradient(300deg,hsl(0,70%,50%,0.2),hsl(0,70%,50%,0.3),hsl(0,70%,50%,0.2))]"
-              : "bg-[linear-gradient(300deg,hsl(var(--secondary)/0.35),hsl(var(--accent)/0.25),hsl(var(--primary)/0.35))]"
-          )}
-        />
+      <div
+        className={cn(
+          "relative overflow-hidden transition-[min-height] duration-500 ease-out",
+          hasError
+            ? "shadow-[inset_0_0_0_1px_rgba(248,113,113,0.2)]"
+            : "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]"
+        )}
+        style={{ minHeight: isWorkflowActive ? "112px" : "96px" }}
+      >
+        <div className="agent-wave-surface" aria-hidden="true" />
         <div className="relative z-10">
           <TickerRow
             label="AGENT"
@@ -795,13 +787,14 @@ function StatusTickerSection({
             isAnimating={isWorkflowActive}
             hasError={hasError}
             onRetry={onRetry}
+            variant="agent"
           />
         </div>
       </div>
 
       {/* TOOLS Section with pulse animation */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-purple-500/10" />
+        <div className="tools-wave-surface" aria-hidden="true" />
         <div className="relative z-10">
           <TickerRow
             label="TOOLS"
@@ -810,6 +803,7 @@ function StatusTickerSection({
             isAnimating={isWorkflowActive}
             toolCallHistory={toolCallHistory}
             onToolClick={onToolClick}
+            variant="tools"
           />
         </div>
       </div>
@@ -849,6 +843,7 @@ interface TickerRowProps {
     createdAt: string;
     updatedAt: string;
   }) => void;
+  variant?: "default" | "agent" | "tools";
 }
 
 function TickerRow({
@@ -861,6 +856,7 @@ function TickerRow({
   onRetry,
   toolCallHistory = [],
   onToolClick,
+  variant = "default",
 }: TickerRowProps) {
   const getStatusIcon = (status: "pending" | "success" | "error") => {
     if (status === "pending") return "⏳";
@@ -876,16 +872,25 @@ function TickerRow({
     return "";
   };
 
+  const animatedPadding =
+    variant === "agent" ? (isAnimating ? "py-6" : "py-4") : "py-4";
+  const showAgentSkeleton = variant === "agent" && isAnimating;
+
   return (
-    <div className="flex flex-col gap-1 px-4 py-4">
+    <div
+      className={cn(
+        "flex flex-col gap-1 px-4 transition-all duration-500 ease-out",
+        animatedPadding
+      )}
+    >
       <div className="flex flex-row gap-4 items-start">
         <span className="pt-1 text-[10px] text-center font-semibold uppercase tracking-widest text-muted-foreground/80 shrink-0 min-w-10">
           {label}
         </span>
         {isToolsRow ? (
-          <div className="flex items-start gap-2 flex-1 w-full">
-            {isAnimating && toolCallHistory.length > 0 ? (
-              <div className="flex flex-col gap-2 w-full">
+          <div className="flex flex-col gap-2 flex-1 w-full">
+            {toolCallHistory.length > 0 ? (
+              <div className="flex flex-col gap-2 w-full pt-1">
                 {toolCallHistory.map((tool, index) => (
                   <div
                     key={`${tool.createdAt}-${index}`}
@@ -911,99 +916,21 @@ function TickerRow({
                 ))}
               </div>
             ) : isAnimating ? (
-              <span className="inline-flex gap-1.5">
-                <span
-                  className="h-2 w-2 rounded-full bg-purple-500 animate-pulse"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-pink-500 animate-pulse"
-                  style={{ animationDelay: "100ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-purple-400 animate-pulse"
-                  style={{ animationDelay: "200ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-pink-400 animate-pulse"
-                  style={{ animationDelay: "300ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-purple-500 animate-pulse"
-                  style={{ animationDelay: "400ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-pink-500 animate-pulse"
-                  style={{ animationDelay: "500ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-purple-400 animate-pulse"
-                  style={{ animationDelay: "600ms" }}
-                />
-              </span>
-            ) : toolCallHistory.length > 0 ? (
-              <div className="flex flex-col gap-2 w-full">
-                {toolCallHistory.map((tool, index) => (
-                  <div
-                    key={`${tool.createdAt}-${index}`}
-                    onClick={() => onToolClick?.(tool)}
-                    className="flex flex-col gap-1 px-3 py-2 rounded-lg bg-background/60 border border-border/40 cursor-pointer hover:bg-background/80 transition-colors w-full"
-                  >
-                    {/* Row 1: Short name with emoji + status emoji */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-foreground">
-                        {getToolShortName(tool.toolName)}
-                      </span>
-                      <span
-                        className={cn("text-sm", getStatusColor(tool.status))}
-                      >
-                        {getStatusIcon(tool.status)}
-                      </span>
-                    </div>
-                    {/* Row 2: Agent's custom description in italic */}
-                    <div className="text-xs italic text-muted-foreground">
-                      {tool.displayTitle}
-                    </div>
-                  </div>
-                ))}
+              <div className="flex flex-col gap-2 w-full pt-1">
+                <div className="loader-line" />
               </div>
             ) : (
-              <span className="text-xs text-muted-foreground/50">Idle</span>
+              <></>
             )}
+            {isAnimating && <div className="loader-line is-secondary mt-2" />}
           </div>
         ) : (
           <div className="flex items-center gap-2 ml-1 flex-1">
-            {isAnimating && !text ? (
-              <span className="inline-flex gap-1.5">
-                <span
-                  className="h-2 w-2 rounded-full bg-primary/70 animate-pulse"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-accent/70 animate-pulse"
-                  style={{ animationDelay: "100ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-secondary/70 animate-pulse"
-                  style={{ animationDelay: "200ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-primary/70 animate-pulse"
-                  style={{ animationDelay: "300ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-accent/70 animate-pulse"
-                  style={{ animationDelay: "400ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-secondary/70 animate-pulse"
-                  style={{ animationDelay: "500ms" }}
-                />
-                <span
-                  className="h-2 w-2 rounded-full bg-primary/70 animate-pulse"
-                  style={{ animationDelay: "600ms" }}
-                />
-              </span>
+            {showAgentSkeleton ? (
+              <div className="flex w-full flex-col gap-2">
+                <div className="loader-line" />
+                <div className="loader-line is-secondary" />
+              </div>
             ) : (
               <>
                 <span
