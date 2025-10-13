@@ -69,6 +69,43 @@ interface NotificationSettings {
   dailyHour?: number;
 }
 
+interface UsageErrorEntry {
+  taskType: string;
+  error?: string;
+  createdAt: string;
+  source?: string;
+}
+
+interface StatsResponse {
+  totalRequests: number;
+  totalTokens: number;
+  totalCost: number;
+  totalToolCalls: number;
+  failedRequests: number;
+  rank: number | null;
+  today: {
+    requests: number;
+    tokens: number;
+    cost: number;
+    failedRequests: number;
+  };
+  thisWeek: {
+    requests: number;
+    tokens: number;
+    cost: number;
+    avgCostPerDay: number;
+    failedRequests: number;
+  };
+  thisMonth: {
+    requests: number;
+    tokens: number;
+    cost: number;
+    failedRequests: number;
+  };
+  recentLogs: unknown[];
+  recentErrors: UsageErrorEntry[];
+}
+
 function formatTimeUntil(timestamp: string): string {
   const now = new Date();
   const target = new Date(timestamp);
@@ -83,6 +120,21 @@ function formatTimeUntil(timestamp: string): string {
   if (days > 0) return `${days}d ${hours % 24}h`;
   if (hours > 0) return `${hours}h ${minutes % 60}m`;
   return `${minutes}m`;
+}
+
+function formatTaskTypeLabel(taskType: string): string {
+  switch (taskType) {
+    case "daily_check":
+      return "Daily Check";
+    case "reminder":
+      return "Reminder";
+    case "notification":
+      return "Notification";
+    case "chat":
+      return "Chat";
+    default:
+      return "Workflow";
+  }
 }
 
 export function LinkedAccountsDialog({
@@ -104,18 +156,12 @@ export function LinkedAccountsDialog({
     nextRunAt?: string;
     timezone?: string;
   } | null>(null);
-  const [stats, setStats] = useState<{
-    totalRequests: number;
-    totalTokens: number;
-    totalCost: number;
-    rank: number | null;
-    thisWeek: { cost: number; avgCostPerDay: number };
-    thisMonth: { cost: number };
-  } | null>(null);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [leaderboard, setLeaderboard] = useState<{
     topUsers: Array<{ userName: string; totalRequests: number; rank: number }>;
     totalRealUsers: number;
   } | null>(null);
+  const [showErrorList, setShowErrorList] = useState(false);
   const { toast } = useToast();
 
   const fetchLinkedAccounts = async () => {
@@ -160,8 +206,9 @@ export function LinkedAccountsDialog({
       }
 
       if (statsRes.ok) {
-        const data = await statsRes.json();
+        const data: StatsResponse = await statsRes.json();
         setStats(data);
+        setShowErrorList(false);
       }
 
       if (leaderboardRes.ok) {
@@ -532,7 +579,7 @@ export function LinkedAccountsDialog({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="rounded-md bg-muted p-3 text-center">
                   <p className="text-2xl font-bold">{stats.totalRequests}</p>
                   <p className="text-xs text-muted-foreground">Total Requests</p>
@@ -542,6 +589,18 @@ export function LinkedAccountsDialog({
                     {(stats.totalTokens / 1000).toFixed(1)}k
                   </p>
                   <p className="text-xs text-muted-foreground">Tokens Used</p>
+                </div>
+                <div className="rounded-md bg-muted p-3 text-center col-span-2 sm:col-span-1">
+                  <p
+                    className={`text-2xl font-bold ${
+                      stats.failedRequests > 0
+                        ? "text-red-600 dark:text-red-400"
+                        : ""
+                    }`}
+                  >
+                    {stats.failedRequests}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Failed Requests</p>
                 </div>
               </div>
 
@@ -570,6 +629,72 @@ export function LinkedAccountsDialog({
                     €{stats.thisMonth.cost.toFixed(4)}
                   </span>
                 </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Failed This Week:</span>
+                  <span className="font-medium">
+                    {stats.thisWeek.failedRequests}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Failed This Month:</span>
+                  <span className="font-medium">
+                    {stats.thisMonth.failedRequests}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 space-y-2 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <Badge
+                    variant={
+                      stats.today.failedRequests > 0 ? "destructive" : "secondary"
+                    }
+                  >
+                    Failed runs today: {stats.today.failedRequests}
+                  </Badge>
+                  {stats.recentErrors.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => setShowErrorList((prev) => !prev)}
+                    >
+                      {showErrorList ? "Hide errors" : "Show errors"}
+                    </Button>
+                  )}
+                </div>
+                {stats.recentErrors.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No failed runs logged recently 🎉
+                  </p>
+                )}
+                {showErrorList && stats.recentErrors.length > 0 && (
+                  <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                    {stats.recentErrors.map((entry, index) => {
+                      const timestamp = new Date(entry.createdAt);
+                      return (
+                        <div key={`${entry.createdAt}-${index}`} className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-destructive">
+                              {formatTaskTypeLabel(entry.taskType)}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {timestamp.toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="text-muted-foreground">
+                            {entry.error || "No error message provided."}
+                          </p>
+                          {entry.source && (
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
+                              Source: {entry.source}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

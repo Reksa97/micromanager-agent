@@ -3,6 +3,33 @@ import { jwtVerify } from "jose";
 import { env } from "@/env";
 import { getTelegramUserByUserId, sendTelegramMessage } from "@/lib/telegram/bot";
 import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
+import { logUsage } from "@/lib/usage-tracking";
+
+const NOTIFICATION_MODEL = "gpt-5-0925";
+
+async function logNotificationFailure(userId: string, errorMessage: string) {
+  try {
+    await logUsage({
+      userId,
+      taskType: "notification",
+      source: "web",
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      inputCost: 0,
+      outputCost: 0,
+      totalCost: 0,
+      toolCalls: 0,
+      toolNames: [],
+      model: NOTIFICATION_MODEL,
+      duration: 0,
+      success: false,
+      error: errorMessage,
+    });
+  } catch (logError) {
+    console.error("Failed to log notification failure:", logError);
+  }
+}
 
 /**
  * POST - Trigger an immediate notification for testing
@@ -11,6 +38,10 @@ import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
  * to the user. Useful for testing notification settings during development.
  */
 export async function POST(req: NextRequest) {
+  let userId: string | null = null;
+  let workflowAttempted = false;
+  let workflowCompleted = false;
+
   try {
     const token = req.headers.get("authorization")?.replace("Bearer ", "");
     if (!token) {
@@ -18,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { payload } = await jwtVerify(token, env.JWT_SECRET);
-    const userId = payload.sub;
+    userId = payload.sub ?? null;
 
     if (!userId) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
@@ -27,6 +58,10 @@ export async function POST(req: NextRequest) {
     // Get user's Telegram info
     const telegramUser = await getTelegramUserByUserId(userId);
     if (!telegramUser || !telegramUser.telegramChatId) {
+      await logNotificationFailure(
+        userId,
+        "Telegram account not linked for proactive notification"
+      );
       return NextResponse.json(
         { error: "Telegram account not linked" },
         { status: 404 }
@@ -34,11 +69,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Run workflow to generate proactive message
+    workflowAttempted = true;
     const workflowResult = await runWorkflow({
       input_as_text:
         "This is a test notification triggered by the user. Review my context and send me a brief, personalized message.",
       user_id: userId,
+      source: "web",
+      usageTaskType: "notification",
     });
+    workflowCompleted = true;
 
     // Send message
     await sendTelegramMessage(
@@ -53,6 +92,17 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Error triggering notification:", error);
+
+    if (
+      userId &&
+      (!workflowAttempted || workflowCompleted)
+    ) {
+      await logNotificationFailure(
+        userId,
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to trigger notification" },
       { status: 500 }

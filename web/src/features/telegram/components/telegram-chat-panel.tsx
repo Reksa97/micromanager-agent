@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Send, Loader2, Phone, PhoneOff } from "lucide-react";
+import { Send, Loader2, Phone, PhoneOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,7 @@ const DEFAULT_CONFIG_ITEMS = [] as const;
 const DEFAULT_TICKER_CONTENT = {
   user: "-",
   assistant: "Micromanaging...",
-  tools: "...",
+  tools: "",
 } as const;
 
 interface TelegramChatPanelProps {
@@ -132,6 +132,16 @@ export function TelegramChatPanel({
     return null;
   }, [messages]);
 
+  const hasLastMessageError = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === "assistant") {
+        return message.metadata?.error === true;
+      }
+    }
+    return false;
+  }, [messages]);
+
   // Load user profile and usage
   useEffect(() => {
     const loadProfile = async () => {
@@ -188,6 +198,21 @@ export function TelegramChatPanel({
     }
   }, [messages]);
 
+  const retryLastMessage = useCallback(() => {
+    // Find last user message and resubmit it
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === "user") {
+        setInput(message.content);
+        // Trigger form submission after a small delay
+        setTimeout(() => {
+          formRef.current?.requestSubmit();
+        }, 100);
+        return;
+      }
+    }
+  }, [messages]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -237,6 +262,11 @@ export function TelegramChatPanel({
         data.reasoning.trim().length > 0
       ) {
         metadata.reasoning = data.reasoning.trim();
+      }
+
+      // Check if workflow returned an error
+      if (data.error === true) {
+        metadata.error = true;
       }
 
       const assistantMessage: StoredMessage = {
@@ -304,61 +334,63 @@ export function TelegramChatPanel({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-y-auto">
       <div className="bg-card/60 px-3 py-3">
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-1">
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={profile?.tier === "paid" ? "secondary" : "outline"}
-              >
-                {profile?.tier?.toUpperCase() || "FREE"}
-              </Badge>
-              <span className="text-sm font-medium text-foreground">
-                {displayIdentity}
-              </span>
-              {voiceStateLabel !== "Idle" && (
-                <span
-                  className={cn(
-                    "font-medium text-xs ",
-                    isVoiceActive ? "text-foreground" : undefined
-                  )}
+          {TIER_PERMISSIONS[profile?.tier ?? "free"].hasVoiceAccess && (
+            <div className="flex items-center justify-between gap-1">
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant={profile?.tier === "paid" ? "secondary" : "outline"}
                 >
-                  Voice agent: {voiceStateLabel}
+                  {profile?.tier?.toUpperCase() || "FREE"}
+                </Badge>
+                <span className="text-sm font-medium text-foreground">
+                  {displayIdentity}
                 </span>
+                {voiceStateLabel !== "Idle" && (
+                  <span
+                    className={cn(
+                      "font-medium text-xs ",
+                      isVoiceActive ? "text-foreground" : undefined
+                    )}
+                  >
+                    Voice agent: {voiceStateLabel}
+                  </span>
+                )}
+              </div>
+              {TIER_PERMISSIONS[profile?.tier ?? "free"].hasVoiceAccess && (
+                <Button
+                  size="sm"
+                  variant={isVoiceActive ? "destructive" : "default"}
+                  onClick={toggleVoice}
+                  className="gap-2"
+                >
+                  {realtime.voiceSignals.state === "connecting" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Connecting
+                    </>
+                  ) : realtime.voiceSignals.state === "processing" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Processing
+                    </>
+                  ) : isVoiceActive ? (
+                    <>
+                      <PhoneOff className="h-4 w-4" />
+                      End Call
+                    </>
+                  ) : (
+                    <>
+                      <Phone className="h-4 w-4" />
+                      Voice Call
+                    </>
+                  )}
+                </Button>
               )}
             </div>
-            {TIER_PERMISSIONS[profile?.tier ?? "free"].hasVoiceAccess && (
-              <Button
-                size="sm"
-                variant={isVoiceActive ? "destructive" : "default"}
-                onClick={toggleVoice}
-                className="gap-2"
-              >
-                {realtime.voiceSignals.state === "connecting" ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Connecting
-                  </>
-                ) : realtime.voiceSignals.state === "processing" ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Processing
-                  </>
-                ) : isVoiceActive ? (
-                  <>
-                    <PhoneOff className="h-4 w-4" />
-                    End Call
-                  </>
-                ) : (
-                  <>
-                    <Phone className="h-4 w-4" />
-                    Voice Call
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
+          )}
           {TIER_PERMISSIONS[profile?.tier ?? "free"].hasVoiceAccess && (
             <div className="flex flex-col gap-1 text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
@@ -413,13 +445,16 @@ export function TelegramChatPanel({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 ">
         <div className="flex flex-col gap-2 pb-4">
           <StatusTickerSection
             userText={lastUserMessage ?? DEFAULT_TICKER_CONTENT.user}
             assistantText={
               lastAssistantMessage ?? DEFAULT_TICKER_CONTENT.assistant
             }
+            isWorkflowActive={isLoading}
+            hasError={hasLastMessageError}
+            onRetry={retryLastMessage}
           />
           <DefaultConfigSquare />
         </div>
@@ -450,25 +485,64 @@ function DefaultConfigSquare() {
 interface StatusTickerSectionProps {
   userText: string;
   assistantText: string;
+  isWorkflowActive: boolean;
+  hasError: boolean;
+  onRetry: () => void;
 }
 
 function StatusTickerSection({
   userText,
   assistantText,
+  isWorkflowActive,
+  hasError,
+  onRetry,
 }: StatusTickerSectionProps) {
   return (
-    <div className="relative overflow-hidden">
-      <div className="absolute inset-0 animate-gradient-slow bg-[linear-gradient(120deg,hsl(var(--primary)/0.2),hsl(var(--accent)/0.1),hsl(var(--secondary)/0.25))]" />
-      <div className="pointer-events-none absolute inset-x-0 top-14 h-full animate-gradient-slow bg-[linear-gradient(300deg,hsl(var(--secondary)/0.35),hsl(var(--accent)/0.25),hsl(var(--primary)/0.35))]" />
-      <div className="relative z-10 space-y-1 px-0 py-1">
-        <TickerRow label="CMD" text={userText} className="text-nowrap" />
-        <TickerRow
-          label="MM"
-          text={assistantText}
-          direction="reverse"
-          className="text-wrap"
-        />
-        <TickerRow label="Tools" text="..." direction="reverse" />
+    <div className="relative overflow-hidden space-y-0">
+      {/* CMD Section with unique background */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-cyan-500/10 to-blue-500/10" />
+        <div className="relative z-10">
+          <TickerRow label="CMD" text={userText} />
+        </div>
+      </div>
+
+      {/* MM Section with animated gradient */}
+      <div className="relative overflow-hidden">
+        <div className={cn(
+          "absolute inset-0 animate-gradient-slow",
+          hasError
+            ? "bg-[linear-gradient(120deg,hsl(0,70%,50%,0.15),hsl(0,70%,50%,0.25),hsl(0,70%,50%,0.15))]"
+            : "bg-[linear-gradient(120deg,hsl(var(--primary)/0.2),hsl(var(--accent)/0.1),hsl(var(--secondary)/0.25))]"
+        )} />
+        <div className={cn(
+          "pointer-events-none absolute inset-0 animate-gradient-slow",
+          hasError
+            ? "bg-[linear-gradient(300deg,hsl(0,70%,50%,0.2),hsl(0,70%,50%,0.3),hsl(0,70%,50%,0.2))]"
+            : "bg-[linear-gradient(300deg,hsl(var(--secondary)/0.35),hsl(var(--accent)/0.25),hsl(var(--primary)/0.35))]"
+        )} />
+        <div className="relative z-10">
+          <TickerRow
+            label="MiM"
+            text={assistantText}
+            isAnimating={isWorkflowActive}
+            hasError={hasError}
+            onRetry={onRetry}
+          />
+        </div>
+      </div>
+
+      {/* TOOLS Section with pulse animation */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-pink-500/10 to-purple-500/10" />
+        <div className="relative z-10">
+          <TickerRow
+            label="TOOLS"
+            text=""
+            isToolsRow
+            isAnimating={isWorkflowActive}
+          />
+        </div>
       </div>
     </div>
   );
@@ -477,27 +551,90 @@ function StatusTickerSection({
 interface TickerRowProps {
   label: string;
   text: string;
-  direction?: "forward" | "reverse";
   className?: string;
+  isToolsRow?: boolean;
+  isAnimating?: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
 }
 
 function TickerRow({
   label,
   text,
-  direction = "forward",
   className,
+  isToolsRow = false,
+  isAnimating = false,
+  hasError = false,
+  onRetry,
 }: TickerRowProps) {
   return (
     <div className="flex flex-col gap-1 px-4 py-4">
-      <div className="flex flex-row items-start gap-4">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 shrink-0">
+      <div className="flex flex-row items-center gap-4">
+        <span className="text-[10px] text-center font-semibold uppercase tracking-widest text-muted-foreground/80 shrink-0 min-w-12">
           {label}
         </span>
-        <span
-          className={`text-sm leading-relaxed font-normal text-foreground/90 ${className}`}
-        >
-          {text}
-        </span>
+        {isToolsRow ? (
+          <div className="flex items-center justify-center gap-2 flex-1 py-2">
+            {isAnimating ? (
+              <span className="inline-flex gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full bg-purple-500 animate-pulse"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-pink-500 animate-pulse"
+                  style={{ animationDelay: "100ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-purple-400 animate-pulse"
+                  style={{ animationDelay: "200ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-pink-400 animate-pulse"
+                  style={{ animationDelay: "300ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-purple-500 animate-pulse"
+                  style={{ animationDelay: "400ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-pink-500 animate-pulse"
+                  style={{ animationDelay: "500ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-purple-400 animate-pulse"
+                  style={{ animationDelay: "600ms" }}
+                />
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground/50">Idle</span>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 flex-1">
+            <span
+              className={cn(
+                "text-sm leading-relaxed font-normal text-foreground/90 flex-1",
+                isAnimating && "opacity-60 animate-pulse",
+                hasError && "text-red-500/90",
+                className
+              )}
+            >
+              {text}
+            </span>
+            {hasError && onRetry && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onRetry}
+                className="gap-1.5 h-7 text-xs"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

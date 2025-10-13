@@ -6,7 +6,7 @@ const COLLECTION = "usage_logs";
 export interface UsageLog {
   _id?: ObjectId;
   userId: string;
-  taskType: "chat" | "daily_check" | "reminder" | "workflow";
+  taskType: "chat" | "daily_check" | "reminder" | "workflow" | "notification";
   source?: "telegram" | "web" | "api";
 
   // Token usage
@@ -40,6 +40,8 @@ async function getUsageCollection() {
   await col.createIndex({ userId: 1, createdAt: -1 });
   await col.createIndex({ createdAt: -1 });
   await col.createIndex({ userId: 1, taskType: 1 });
+  await col.createIndex({ success: 1, createdAt: -1 });
+  await col.createIndex({ success: 1, userId: 1, createdAt: -1 });
 
   return col;
 }
@@ -64,27 +66,37 @@ export interface UsageStats {
   totalTokens: number;
   totalCost: number; // EUR
   totalToolCalls: number;
+  failedRequests: number;
 
   // Breakdown by period
   today: {
     requests: number;
     tokens: number;
     cost: number;
+    failedRequests: number;
   };
   thisWeek: {
     requests: number;
     tokens: number;
     cost: number;
     avgCostPerDay: number;
+    failedRequests: number;
   };
   thisMonth: {
     requests: number;
     tokens: number;
     cost: number;
+    failedRequests: number;
   };
 
   // Recent activity
   recentLogs: UsageLog[];
+  recentErrors: Array<{
+    taskType: UsageLog["taskType"];
+    error?: string;
+    createdAt: Date;
+    source?: UsageLog["source"];
+  }>;
 }
 
 export async function getUserUsageStats(userId: string): Promise<UsageStats> {
@@ -104,7 +116,14 @@ export async function getUserUsageStats(userId: string): Promise<UsageStats> {
   startOfMonth.setHours(0, 0, 0, 0);
 
   // Aggregate queries
-  const [totalStats, todayStats, weekStats, monthStats, recentLogs] = await Promise.all([
+  const [
+    totalStats,
+    todayStats,
+    weekStats,
+    monthStats,
+    recentLogs,
+    recentErrorLogs,
+  ] = await Promise.all([
     // Total all-time stats
     collection.aggregate([
       { $match: { userId } },
@@ -115,6 +134,11 @@ export async function getUserUsageStats(userId: string): Promise<UsageStats> {
           totalTokens: { $sum: "$totalTokens" },
           totalCost: { $sum: "$totalCost" },
           totalToolCalls: { $sum: { $ifNull: ["$toolCalls", 0] } },
+          failedRequests: {
+            $sum: {
+              $cond: [{ $eq: ["$success", false] }, 1, 0],
+            },
+          },
         },
       },
     ]).toArray(),
@@ -128,6 +152,11 @@ export async function getUserUsageStats(userId: string): Promise<UsageStats> {
           requests: { $sum: 1 },
           tokens: { $sum: "$totalTokens" },
           cost: { $sum: "$totalCost" },
+          failedRequests: {
+            $sum: {
+              $cond: [{ $eq: ["$success", false] }, 1, 0],
+            },
+          },
         },
       },
     ]).toArray(),
@@ -141,6 +170,11 @@ export async function getUserUsageStats(userId: string): Promise<UsageStats> {
           requests: { $sum: 1 },
           tokens: { $sum: "$totalTokens" },
           cost: { $sum: "$totalCost" },
+          failedRequests: {
+            $sum: {
+              $cond: [{ $eq: ["$success", false] }, 1, 0],
+            },
+          },
         },
       },
     ]).toArray(),
@@ -154,6 +188,11 @@ export async function getUserUsageStats(userId: string): Promise<UsageStats> {
           requests: { $sum: 1 },
           tokens: { $sum: "$totalTokens" },
           cost: { $sum: "$totalCost" },
+          failedRequests: {
+            $sum: {
+              $cond: [{ $eq: ["$success", false] }, 1, 0],
+            },
+          },
         },
       },
     ]).toArray(),
@@ -163,25 +202,82 @@ export async function getUserUsageStats(userId: string): Promise<UsageStats> {
       .sort({ createdAt: -1 })
       .limit(10)
       .toArray(),
+
+    // Recent errors
+    collection
+      .find({ userId, success: false })
+      .project<Pick<UsageLog, "taskType" | "error" | "createdAt" | "source">>({
+        taskType: 1,
+        error: 1,
+        createdAt: 1,
+        source: 1,
+      })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .toArray(),
   ]);
 
-  type AggregateTotal = { totalRequests: number; totalTokens: number; totalCost: number; totalToolCalls: number };
-  type AggregatePeriod = { requests: number; tokens: number; cost: number };
+  type AggregateTotal = {
+    totalRequests: number;
+    totalTokens: number;
+    totalCost: number;
+    totalToolCalls: number;
+    failedRequests: number;
+  };
+  type AggregatePeriod = {
+    requests: number;
+    tokens: number;
+    cost: number;
+    failedRequests: number;
+  };
 
-  const total: AggregateTotal = totalStats[0] as AggregateTotal || { totalRequests: 0, totalTokens: 0, totalCost: 0, totalToolCalls: 0 };
-  const today: AggregatePeriod = todayStats[0] as AggregatePeriod || { requests: 0, tokens: 0, cost: 0 };
-  const week: AggregatePeriod = weekStats[0] as AggregatePeriod || { requests: 0, tokens: 0, cost: 0 };
-  const month: AggregatePeriod = monthStats[0] as AggregatePeriod || { requests: 0, tokens: 0, cost: 0 };
+  const total: AggregateTotal =
+    (totalStats[0] as AggregateTotal) || {
+      totalRequests: 0,
+      totalTokens: 0,
+      totalCost: 0,
+      totalToolCalls: 0,
+      failedRequests: 0,
+    };
+  const today: AggregatePeriod =
+    (todayStats[0] as AggregatePeriod) || {
+      requests: 0,
+      tokens: 0,
+      cost: 0,
+      failedRequests: 0,
+    };
+  const week: AggregatePeriod =
+    (weekStats[0] as AggregatePeriod) || {
+      requests: 0,
+      tokens: 0,
+      cost: 0,
+      failedRequests: 0,
+    };
+  const month: AggregatePeriod =
+    (monthStats[0] as AggregatePeriod) || {
+      requests: 0,
+      tokens: 0,
+      cost: 0,
+      failedRequests: 0,
+    };
 
   // Calculate weekly average
   const daysInWeek = Math.max(1, Math.ceil((now.getTime() - startOfWeek.getTime()) / (1000 * 60 * 60 * 24)));
   const avgCostPerDay = week.cost / daysInWeek;
+
+  const recentErrors = recentErrorLogs.map((log) => ({
+    taskType: log.taskType,
+    error: log.error,
+    createdAt: log.createdAt,
+    source: log.source,
+  }));
 
   return {
     totalRequests: total.totalRequests,
     totalTokens: total.totalTokens,
     totalCost: total.totalCost,
     totalToolCalls: total.totalToolCalls,
+    failedRequests: total.failedRequests,
     today,
     thisWeek: {
       ...week,
@@ -189,6 +285,7 @@ export async function getUserUsageStats(userId: string): Promise<UsageStats> {
     },
     thisMonth: month,
     recentLogs,
+    recentErrors,
   };
 }
 

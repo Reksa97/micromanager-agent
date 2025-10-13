@@ -12,6 +12,38 @@ import {
 } from "@/lib/telegram/bot";
 import { insertMessage } from "@/lib/conversations";
 import { env } from "@/env";
+import { logUsage } from "@/lib/usage-tracking";
+import type { UsageLog } from "@/lib/usage-tracking";
+
+const TASK_FAILURE_MODEL = "gpt-5-0925";
+
+async function logTaskFailure(
+  userId: string,
+  taskType: UsageLog["taskType"],
+  errorMessage: string
+) {
+  try {
+    await logUsage({
+      userId,
+      taskType,
+      source: "api",
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      inputCost: 0,
+      outputCost: 0,
+      totalCost: 0,
+      toolCalls: 0,
+      toolNames: [],
+      model: TASK_FAILURE_MODEL,
+      duration: 0,
+      success: false,
+      error: errorMessage,
+    });
+  } catch (logError) {
+    console.error(`[Master Cron] Failed to log ${taskType} failure:`, logError);
+  }
+}
 
 /**
  * Master cron job that processes all scheduled tasks
@@ -76,6 +108,17 @@ export async function GET(req: NextRequest) {
 
           // Unlock for retry
           await unlockTask(taskId);
+          if (task.userId) {
+            const taskType: UsageLog["taskType"] =
+              task.taskType === "daily_check" || task.taskType === "reminder"
+                ? task.taskType
+                : "workflow";
+            await logTaskFailure(
+              task.userId,
+              taskType,
+              error instanceof Error ? error.message : "Unknown error"
+            );
+          }
 
           return {
             taskId,
@@ -132,6 +175,11 @@ async function executeDailyCheck(userId: string) {
   const telegramUser = await getTelegramUserByUserId(userId);
   if (!telegramUser?.telegramChatId) {
     console.log(`[Daily Check] No Telegram chat for user ${userId}, skipping`);
+    await logTaskFailure(
+      userId,
+      "daily_check",
+      "No Telegram chat linked for daily check"
+    );
     return;
   }
 
@@ -140,6 +188,8 @@ async function executeDailyCheck(userId: string) {
     input_as_text:
       "This is your daily check-in. Review my context and send me a brief, personalized message. Ask about my plans or offer helpful suggestions.",
     user_id: userId,
+    source: "api",
+    usageTaskType: "daily_check",
   });
 
   const message = workflowResult.output_text;
@@ -174,6 +224,11 @@ async function executeReminder(
   const telegramUser = await getTelegramUserByUserId(userId);
   if (!telegramUser?.telegramChatId) {
     console.log(`[Reminder] No Telegram chat for user ${userId}, skipping`);
+    await logTaskFailure(
+      userId,
+      "reminder",
+      "No Telegram chat linked for reminder"
+    );
     return;
   }
 

@@ -63,12 +63,16 @@ export async function POST(req: NextRequest) {
     const workflowResult = await runWorkflow({
       input_as_text: message,
       user_id: userId,
+      source: "telegram",
+      usageTaskType: "chat",
     });
 
     const response = workflowResult.output_text;
+    const hasError = 'error' in workflowResult && workflowResult.error === true;
 
     console.log("[Telegram Chat] Workflow completed", {
       userId,
+      hasError,
       responsePreview: response.length > 100 ? response.slice(0, 100) + "..." : response,
     });
 
@@ -81,10 +85,12 @@ export async function POST(req: NextRequest) {
       source: "micromanager",
       createdAt: new Date(),
       updatedAt: new Date(),
+      metadata: hasError ? { error: true } : undefined,
     });
 
     return NextResponse.json({
       response,
+      error: hasError,
     });
   } catch (error) {
     console.error("Telegram chat error:", error);
