@@ -8,6 +8,7 @@ import {
   updateMessage,
 } from "@/lib/conversations";
 import { notifyTelegramUser } from "@/lib/telegram/bot";
+import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
 
 const requestSchema = z.object({
   message: z.string().min(1),
@@ -69,8 +70,6 @@ export async function POST(request: Request) {
       updatedAt: now,
     });
 
-    // Import and use the workflow instead of custom agent
-    const { runWorkflow } = await import("@/lib/agent/workflows/micromanager.workflow");
     const workflowResult = await runWorkflow({
       input_as_text: userMessage,
       user_id: userId,
@@ -80,7 +79,7 @@ export async function POST(request: Request) {
 
     const finalContent =
       workflowResult.output_text?.trim() ?? "No final output from workflow";
-    const hasError = 'error' in workflowResult && workflowResult.error === true;
+    const hasError = "error" in workflowResult && workflowResult.error === true;
 
     await updateMessage(activeAssistantMessageId, {
       content: finalContent,

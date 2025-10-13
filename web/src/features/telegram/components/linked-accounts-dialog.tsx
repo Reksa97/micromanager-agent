@@ -317,7 +317,7 @@ export function LinkedAccountsDialog({
 
         // Trigger immediate message for testing (only if not "off")
         if (newInterval !== "off") {
-          fetch("/api/dev/trigger-notification", {
+          fetch("/api/trigger-notification", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

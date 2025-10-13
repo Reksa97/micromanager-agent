@@ -1,13 +1,9 @@
-import {
-  getUserContextDocument,
-  updateUserContextDocument,
-  UserContextDocument,
-} from "@/lib/user-context";
-import { getRecentMessages } from "@/lib/conversations";
 import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { z } from "zod";
+import { ObjectId } from "mongodb";
+
 import {
   ToolRegistry,
   ToolSchemas,
@@ -22,84 +18,22 @@ import { UpdateEventHandler } from "@cocal/google-calendar-mcp/src/handlers/core
 import { DeleteEventHandler } from "@cocal/google-calendar-mcp/src/handlers/core/DeleteEventHandler";
 import { FreeBusyEventHandler } from "@cocal/google-calendar-mcp/src/handlers/core/FreeBusyEventHandler";
 import { GetCurrentTimeHandler } from "@cocal/google-calendar-mcp/src/handlers/core/GetCurrentTimeHandler";
+
 import { env } from "@/env";
 import { OAuth2Client } from "@cocal/google-calendar-mcp/node_modules/google-auth-library";
 import { verifyMcpToken } from "@/lib/mcp-auth";
 import { logToolCall, getDefaultToolDisplayInfo } from "@/lib/workflow-runs";
-import { ObjectId } from "mongodb";
+import { getGoogleAccessToken } from "@/lib/google-tokens";
+import {
+  getUserContextDocument,
+  updateUserContextDocument,
+  UserContextDocument,
+} from "@/lib/user-context";
+import { getRecentMessages } from "@/lib/conversations";
 
 const formatMcpResponse = (response: string): CallToolResult => ({
   content: [{ type: "text", text: response }],
 });
-
-// Scope map for tool authorization
-const TOOL_SCOPE_MAP: Record<string, string[]> = {
-  get_user_context: ["read:user-context"],
-  update_user_context: ["write:user-context"],
-  get_conversation_messages: ["read:user-context"],
-  "list-calendars": ["calendar:read"],
-  list_calendars: ["calendar:read"],
-  "list-events": ["calendar:read"],
-  list_events: ["calendar:read"],
-  "search-events": ["calendar:read"],
-  search_events: ["calendar:read"],
-  "get-event": ["calendar:read"],
-  get_event: ["calendar:read"],
-  "list-colors": ["calendar:read"],
-  list_colors: ["calendar:read"],
-  "create-event": ["calendar:write"],
-  create_event: ["calendar:write"],
-  "update-event": ["calendar:write"],
-  update_event: ["calendar:write"],
-  "delete-event": ["calendar:write"],
-  delete_event: ["calendar:write"],
-  "get-freebusy": ["calendar:read"],
-  get_freebusy: ["calendar:read"],
-  "get-current-time": ["calendar:read"],
-  get_current_time: ["calendar:read"],
-};
-
-// Helper functions for scope checking
-const scopesFromAuth = (auth?: AuthInfo): Set<string> =>
-  new Set(auth?.scopes ?? []);
-
-const userHasScope = (required: string[], auth?: AuthInfo): boolean =>
-  required.length === 0 ||
-  required.some((scope) => scopesFromAuth(auth).has(scope));
-
-// These helper functions are available for future dynamic capability filtering
-// Currently, all tools are listed in capabilities and access control is enforced at runtime
-// const visibleToolNames = (auth?: AuthInfo): string[] =>
-//   Object.entries(TOOL_SCOPE_MAP)
-//     .filter(([name, scopes]) => userHasScope(scopes, auth))
-//     .map(([name]) => name);
-//
-// const getToolCapabilities = (auth?: AuthInfo) => {
-//   const visible = visibleToolNames(auth);
-//   const capabilities: Record<string, { description: string }> = {};
-//
-//   visible.forEach((toolName) => {
-//     const normalizedName = toolName.replace("-", "_");
-//
-//     // Check if it's a context tool
-//     if (toolName === "get_user_context") {
-//       capabilities[normalizedName] = { description: "Get the user context" };
-//     } else if (toolName === "update_user_context") {
-//       capabilities[normalizedName] = { description: "Update the user context" };
-//     } else {
-//       // It's a calendar tool
-//       const calendarToolName = toolName.replace("_", "-");
-//       const toolInfo = ToolRegistry.getToolsWithSchemas().find(
-//         (t) => t.name === calendarToolName
-//       );
-//       if (toolInfo) {
-//         capabilities[normalizedName] = { description: toolInfo.description };
-//       }
-//     }
-//   });
-//
-//   return capabilities;
-// };
 
 const calendarToolHandlers = {
   "list-calendars": ListCalendarsHandler,
@@ -113,6 +47,36 @@ const calendarToolHandlers = {
   "get-freebusy": FreeBusyEventHandler,
   "get-current-time": GetCurrentTimeHandler,
 };
+
+export type McpToolName =
+  | "get_user_context"
+  | "update_user_context"
+  | "get_conversation_messages"
+  | keyof typeof calendarToolHandlers;
+
+// Scope map for tool authorization
+const TOOL_SCOPE_MAP: Record<McpToolName, string[]> = {
+  get_user_context: ["read:user-context"],
+  update_user_context: ["write:user-context"],
+  get_conversation_messages: ["read:user-context"],
+  "list-calendars": ["calendar:read"],
+  "list-events": ["calendar:read"],
+  "search-events": ["calendar:read"],
+  "get-event": ["calendar:read"],
+  "list-colors": ["calendar:read"],
+  "create-event": ["calendar:write"],
+  "update-event": ["calendar:write"],
+  "delete-event": ["calendar:write"],
+  "get-freebusy": ["calendar:read"],
+  "get-current-time": ["calendar:read"],
+};
+
+const scopesFromAuth = (auth?: AuthInfo): Set<string> =>
+  new Set(auth?.scopes ?? []);
+
+const userHasScope = (required: string[], auth?: AuthInfo): boolean =>
+  required.length === 0 ||
+  required.some((scope) => scopesFromAuth(auth).has(scope));
 
 // StreamableHttp server
 const handler = createMcpHandler(
@@ -577,22 +541,6 @@ const handler = createMcpHandler(
     );
 
     ToolRegistry.getToolsWithSchemas().forEach((tool) => {
-      const originalZodSchema = ToolSchemas[tool.name];
-
-      // const extendedZodSchema = z.object({
-      //   log_message: z
-      //     .string()
-      //     .optional()
-      //     .describe(
-      //       "Short human-readable description of what you're doing with this tool."
-      //     ),
-      //   tool_args: originalZodSchema,
-      // });
-
-      // Extract the JSON schema shape from the extended Zod schema
-      // const extendedSchemaShape =
-      //   ToolRegistry.extractSchemaShape(extendedZodSchema);
-
       server.tool(
         tool.name,
         tool.description,
@@ -603,16 +551,10 @@ const handler = createMcpHandler(
             .describe(
               "Short human-readable description of what you're doing with this tool."
             ),
-          tool_args: originalZodSchema,
+          tool_args: ToolSchemas[tool.name],
         },
         async (args, extra) => {
           const toolCallId = new ObjectId().toString();
-          if (!extra) {
-            console.warn("[MCP] Extra is undefined", {
-              args,
-              extra,
-            });
-          }
           const authInfo = extra?.authInfo as AuthInfo | undefined;
           if (!authInfo) {
             console.error("[MCP] Auth info is required", { args, extra });
@@ -625,18 +567,12 @@ const handler = createMcpHandler(
 
           console.log("[MCP] Tool called", { toolName, args, extra });
 
-          // Extract log_message from args
-          const { log_message, tool_args } = args as {
-            log_message?: string;
-            tool_args?: Record<string, unknown>;
-          };
+          const { log_message, tool_args } = args;
 
-          // Get display info from agent's log_message or fallback
           const displayInfo = log_message
             ? { displayTitle: log_message, displayDescription: "" }
             : getDefaultToolDisplayInfo(toolName);
 
-          // Log tool start (only if workflowRunId exists)
           if (workflowRunId) {
             await logToolCall(workflowRunId, toolCallId, {
               toolName,
@@ -651,7 +587,6 @@ const handler = createMcpHandler(
             );
           }
 
-          // Check scope authorization
           const requiredScopes = TOOL_SCOPE_MAP[tool.name] ?? [];
           if (!userHasScope(requiredScopes, authInfo)) {
             console.error(
@@ -691,7 +626,6 @@ const handler = createMcpHandler(
               console.log("[MCP] Missing google access token");
               const errorMsg = "Missing Google access token";
 
-              // Log error
               if (workflowRunId) {
                 await logToolCall(workflowRunId, toolCallId, {
                   status: "error",
@@ -711,7 +645,6 @@ const handler = createMcpHandler(
               oAuth2Client
             );
 
-            // Log success
             if (workflowRunId) {
               await logToolCall(workflowRunId, toolCallId, {
                 status: "success",
@@ -769,7 +702,7 @@ const handler = createMcpHandler(
             scopes.length > 0 ? ` (requires: ${scopes.join(", ")})` : "";
           return {
             ...rest,
-            [tool.name.replace("-", "_")]: {
+            [tool.name]: {
               description: tool.description + scopeStr,
             },
           };
@@ -809,7 +742,6 @@ const verifyToken = async (
     );
 
     // Fetch Google token from DB with auto-refresh
-    const { getGoogleAccessToken } = await import("@/lib/google-tokens");
     let googleAccessToken = await getGoogleAccessToken(testUserId);
 
     // Fallback to env var if no DB token

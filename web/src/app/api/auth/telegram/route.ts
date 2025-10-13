@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validate, parse } from "@telegram-apps/init-data-node";
-import { SignJWT } from "jose";
+import { SignJWT, jwtVerify } from "jose";
+import { ObjectId } from "mongodb";
 
 import { env } from "@/env";
 import { getMongoClient } from "@/lib/db";
@@ -67,10 +68,7 @@ export async function POST(req: NextRequest) {
       });
       console.log("[Telegram Auth API] Init data validation successful");
     } catch (error) {
-      console.error(
-        "[Telegram Auth API] Init data validation failed:",
-        error
-      );
+      console.error("[Telegram Auth API] Init data validation failed:", error);
       console.error("[Telegram Auth API] Validation error details:", {
         errorMessage: error instanceof Error ? error.message : String(error),
         initDataSample: initData.substring(0, 50),
@@ -151,7 +149,8 @@ export async function POST(req: NextRequest) {
           ? `${telegramUser.first_name} ${telegramUser.last_name || ""}`.trim()
           : telegramUser.username,
         username: telegramUser.username,
-        email: telegramUser.username || `telegram_${telegramUser.id}@telegram.local`,
+        email:
+          telegramUser.username || `telegram_${telegramUser.id}@telegram.local`,
         tier: "free",
         createdAt: new Date(),
         lastLogin: new Date(),
@@ -174,7 +173,8 @@ export async function POST(req: NextRequest) {
     await upsertTelegramUser({
       telegramId: telegramUser.id,
       id: userId,
-      email: telegramUser.username || `telegram_${telegramUser.id}@telegram.local`,
+      email:
+        telegramUser.username || `telegram_${telegramUser.id}@telegram.local`,
       telegramChatId: resolvedChatId,
       name: telegramUser.first_name || telegramUser.username || "User",
       lastLogin: new Date(),
@@ -250,14 +250,14 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { jwtVerify } = await import("jose");
-    const { ObjectId } = await import("mongodb");
     const { payload } = await jwtVerify(token, env.JWT_SECRET);
 
     // Get fresh user data from database
     const client = await getMongoClient();
     const db = client.db();
-    const user = await db.collection("users").findOne({ _id: new ObjectId(payload.sub as string) });
+    const user = await db
+      .collection("users")
+      .findOne({ _id: new ObjectId(payload.sub as string) });
 
     if (!user) {
       console.error("[Telegram Auth GET] User not found in database");

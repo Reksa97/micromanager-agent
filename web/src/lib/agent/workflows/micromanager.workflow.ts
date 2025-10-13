@@ -13,6 +13,7 @@ import { createWorkflowRun, updateWorkflowRun } from "@/lib/workflow-runs";
 import { ObjectId } from "mongodb";
 import { MODELS } from "@/lib/utils";
 import { getRecentMessages } from "@/lib/conversations";
+import { McpToolName } from "@/app/mcp/route";
 
 type WorkflowInput = {
   input_as_text: string;
@@ -58,7 +59,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       "delete-event",
       "get-freebusy",
       "get-current-time",
-    ],
+    ] as McpToolName[],
     requireApproval: "never",
     ...(await getHostedMcpParams(workflow.user_id, sessionId)),
   });
