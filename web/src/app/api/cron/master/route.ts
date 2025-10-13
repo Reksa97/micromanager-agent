@@ -14,8 +14,9 @@ import { insertMessage } from "@/lib/conversations";
 import { env } from "@/env";
 import { logUsage } from "@/lib/usage-tracking";
 import type { UsageLog } from "@/lib/usage-tracking";
+import { MODELS } from "@/lib/utils";
 
-const TASK_FAILURE_MODEL = "gpt-5-0925";
+const TASK_FAILURE_MODEL = MODELS.text;
 
 async function logTaskFailure(
   userId: string,
@@ -186,10 +187,11 @@ async function executeDailyCheck(userId: string) {
   // Run workflow with daily check prompt
   const workflowResult = await runWorkflow({
     input_as_text:
-      "This is your daily check-in. Review my context and send me a brief, personalized message. Ask about my plans or offer helpful suggestions.",
+      "This is your daily check-in. Review and update my context and send me a brief, personalized message. Ask about my plans or offer helpful suggestions.",
     user_id: userId,
     source: "api",
     usageTaskType: "daily_check",
+    model: TASK_FAILURE_MODEL,
   });
 
   const message = workflowResult.output_text;

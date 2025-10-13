@@ -4,19 +4,21 @@ import { logUsage, calculateCost } from "@/lib/usage-tracking";
 import type { UsageLog } from "@/lib/usage-tracking";
 import { logMcpToolCall, generateToolDisplayInfo } from "@/lib/mcp-tool-logs";
 import { ObjectId } from "mongodb";
+import { MODELS } from "@/lib/utils";
 
 type WorkflowInput = {
   input_as_text: string;
   user_id: string;
   source?: UsageLog["source"];
   usageTaskType?: UsageLog["taskType"];
+  model?: string;
 };
 
 // Main code entrypoint
 export const runWorkflow = async (workflow: WorkflowInput) => {
   const usageTaskType = workflow.usageTaskType ?? "workflow";
   const source = workflow.source ?? "api";
-  const modelName = "gpt-5-mini-2025-08-07";
+  const modelName = workflow.model ?? MODELS.text;
   const startTime = Date.now();
   const estimatedInputTokens = Math.ceil(workflow.input_as_text.length / 4);
   const sessionId = new ObjectId().toString(); // Unique session for this workflow run
@@ -99,7 +101,8 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       model: modelName,
     });
 
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     await safeLogUsage({
       userId: workflow.user_id,
       taskType: usageTaskType,

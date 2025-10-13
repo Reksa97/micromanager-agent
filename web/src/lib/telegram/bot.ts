@@ -19,7 +19,7 @@ export async function getTelegramUserByUserId(
   userId: string
 ): Promise<UserProfile | null> {
   const col = await telegramUsersCollection();
-  return await col.findOne({ userId });
+  return await col.findOne({ id: userId });
 }
 
 export async function getTelegramUserByTelegramId(

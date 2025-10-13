@@ -7,6 +7,6 @@ export function cn(...inputs: ClassValue[]) {
 
 export const MODELS = {
   realtime: "gpt-realtime" as const,
-  text: "gpt-5-mini" as const,
+  text: "gpt-5-mini-2025-08-07" as const,
   textBudget: "gpt-5-nano" as const,
 };

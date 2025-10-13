@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { env } from "@/env";
-import { getTelegramUserByUserId, sendTelegramMessage } from "@/lib/telegram/bot";
+import {
+  getTelegramUserByUserId,
+  sendTelegramMessage,
+} from "@/lib/telegram/bot";
 import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
 import { logUsage } from "@/lib/usage-tracking";
+import { MODELS } from "@/lib/utils";
 
-const NOTIFICATION_MODEL = "gpt-5-0925";
+const NOTIFICATION_MODEL = MODELS.text;
 
-async function logNotificationFailure(userId: string, errorMessage: string) {
+async function logNotificationFailure(
+  userId: string,
+  errorMessage: string,
+  model: string = NOTIFICATION_MODEL
+) {
   try {
+    console.log("Logging notification failure:", {
+      userId,
+      errorMessage,
+    });
     await logUsage({
       userId,
       taskType: "notification",
@@ -21,7 +33,7 @@ async function logNotificationFailure(userId: string, errorMessage: string) {
       totalCost: 0,
       toolCalls: 0,
       toolNames: [],
-      model: NOTIFICATION_MODEL,
+      model,
       duration: 0,
       success: false,
       error: errorMessage,
@@ -57,10 +69,12 @@ export async function POST(req: NextRequest) {
 
     // Get user's Telegram info
     const telegramUser = await getTelegramUserByUserId(userId);
+    console.log("Telegram user", { userId, telegramUser });
     if (!telegramUser || !telegramUser.telegramChatId) {
       await logNotificationFailure(
         userId,
-        "Telegram account not linked for proactive notification"
+        "Telegram account not linked for proactive notification",
+        NOTIFICATION_MODEL
       );
       return NextResponse.json(
         { error: "Telegram account not linked" },
@@ -76,6 +90,7 @@ export async function POST(req: NextRequest) {
       user_id: userId,
       source: "web",
       usageTaskType: "notification",
+      model: NOTIFICATION_MODEL,
     });
     workflowCompleted = true;
 
@@ -93,10 +108,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Error triggering notification:", error);
 
-    if (
-      userId &&
-      (!workflowAttempted || workflowCompleted)
-    ) {
+    if (userId && (!workflowAttempted || workflowCompleted)) {
       await logNotificationFailure(
         userId,
         error instanceof Error ? error.message : "Unknown error"
