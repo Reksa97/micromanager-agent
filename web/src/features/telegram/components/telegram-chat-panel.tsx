@@ -11,6 +11,13 @@ import {
 import { Send, Loader2, Phone, PhoneOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { StoredMessage } from "@/lib/conversations";
 import { TIER_PERMISSIONS, type UserProfile } from "@/types/user";
@@ -20,8 +27,8 @@ import type { ChatMessage } from "@/features/chat/types";
 const DEFAULT_CONFIG_ITEMS = [] as const;
 
 const DEFAULT_TICKER_CONTENT = {
-  user: "-",
-  assistant: "Micromanaging...",
+  user: "",
+  assistant: "",
   tools: "",
 } as const;
 
@@ -39,12 +46,22 @@ export function TelegramChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [toolCallHistory, setToolCallHistory] = useState<Array<{
-    displayTitle: string;
-    displayDescription?: string;
-    status: "pending" | "success" | "error";
-    createdAt: string;
-  }>>([]);
+  const [toolCallHistory, setToolCallHistory] = useState<
+    Array<{
+      toolName: string;
+      displayTitle: string;
+      displayDescription?: string;
+      arguments: Record<string, unknown>;
+      result?: unknown;
+      status: "pending" | "success" | "error";
+      error?: string;
+      duration?: number;
+      createdAt: string;
+      updatedAt: string;
+    }>
+  >([]);
+  const [selectedTool, setSelectedTool] = useState<typeof toolCallHistory[0] | null>(null);
+  const [isToolModalOpen, setIsToolModalOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -204,18 +221,12 @@ export function TelegramChatPanel({
     }
   }, [messages]);
 
-  // Poll for tool logs when workflow is active
+  // Poll for workflow runs - show current run when active, previous run when idle
   useEffect(() => {
-    if (!isLoading) {
-      // Clear tool call history when workflow finishes
-      setToolCallHistory([]);
-      return;
-    }
-
-    const pollToolLogs = async () => {
+    const pollWorkflowRuns = async () => {
       try {
         const token = localStorage.getItem("telegram-token");
-        const response = await fetch("/api/user/tool-logs?latest=true", {
+        const response = await fetch("/api/user/workflow-runs", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -223,32 +234,66 @@ export function TelegramChatPanel({
 
         if (response.ok) {
           const data = await response.json();
-          if (data.logs && data.logs.length > 0) {
-            // Sort by createdAt descending (newest first)
-            const sortedLogs = [...data.logs].sort((a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+
+          // Use current workflow if running, otherwise show previous workflow
+          const workflowToDisplay = isLoading ? data.current : data.previous;
+
+          if (workflowToDisplay?.toolCalls) {
+            // Convert toolCalls object to array and sort by createdAt descending (newest first)
+            type ToolCall = {
+              toolName: string;
+              displayTitle: string;
+              displayDescription?: string;
+              arguments: Record<string, unknown>;
+              result?: unknown;
+              status: "pending" | "success" | "error";
+              error?: string;
+              duration?: number;
+              createdAt: string;
+              updatedAt: string;
+            };
+            const toolCallsArray = (
+              Object.values(workflowToDisplay.toolCalls) as ToolCall[]
+            ).map((call) => ({
+              toolName: call.toolName,
+              displayTitle: call.displayTitle,
+              displayDescription: call.displayDescription,
+              arguments: call.arguments,
+              result: call.result,
+              status: call.status,
+              error: call.error,
+              duration: call.duration,
+              createdAt: call.createdAt,
+              updatedAt: call.updatedAt,
+            }));
+
+            toolCallsArray.sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
             );
 
-            setToolCallHistory(
-              sortedLogs.map((log) => ({
-                displayTitle: log.displayTitle,
-                displayDescription: log.displayDescription,
-                status: log.status,
-                createdAt: log.createdAt,
-              }))
-            );
+            setToolCallHistory(toolCallsArray);
+          } else {
+            setToolCallHistory([]);
           }
         }
       } catch (err) {
-        console.error("Failed to fetch tool logs:", err);
+        console.error("Failed to fetch workflow runs:", err);
       }
     };
 
-    // Poll immediately, then every 500ms
-    pollToolLogs();
-    const interval = setInterval(pollToolLogs, 500);
+    // Fetch immediately
+    pollWorkflowRuns();
 
-    return () => clearInterval(interval);
+    // Only poll continuously while workflow is active
+    if (isLoading) {
+      const interval = setInterval(pollWorkflowRuns, 2000);
+      return () => clearInterval(interval);
+    }
+
+    // When idle, we've already fetched once above, no need to poll
+    return () => {};
   }, [isLoading]);
 
   const retryLastMessage = useCallback(() => {
@@ -503,16 +548,127 @@ export function TelegramChatPanel({
           <StatusTickerSection
             userText={lastUserMessage ?? DEFAULT_TICKER_CONTENT.user}
             assistantText={
-              isLoading ? "" : (lastAssistantMessage ?? DEFAULT_TICKER_CONTENT.assistant)
+              isLoading
+                ? ""
+                : lastAssistantMessage ?? DEFAULT_TICKER_CONTENT.assistant
             }
             isWorkflowActive={isLoading}
             hasError={hasLastMessageError}
             onRetry={retryLastMessage}
             toolCallHistory={toolCallHistory}
+            onToolClick={(tool) => {
+              setSelectedTool(tool);
+              setIsToolModalOpen(true);
+            }}
           />
           <DefaultConfigSquare />
         </div>
       </div>
+
+      {/* Tool Call Details Modal */}
+      <Dialog open={isToolModalOpen} onOpenChange={setIsToolModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedTool?.displayTitle}
+              {selectedTool && (
+                <Badge
+                  variant={
+                    selectedTool.status === "success"
+                      ? "default"
+                      : selectedTool.status === "error"
+                      ? "destructive"
+                      : "secondary"
+                  }
+                >
+                  {selectedTool.status}
+                </Badge>
+              )}
+            </DialogTitle>
+            {selectedTool?.displayDescription && (
+              <DialogDescription>
+                {selectedTool.displayDescription}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+
+          {selectedTool && (
+            <div className="space-y-4">
+              {/* Tool Name */}
+              <div>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-1">
+                  Tool Name
+                </h4>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  {selectedTool.toolName}
+                </code>
+              </div>
+
+              {/* Arguments */}
+              <div>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-1">
+                  Arguments
+                </h4>
+                <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                  {JSON.stringify(selectedTool.arguments, null, 2)}
+                </pre>
+              </div>
+
+              {/* Result */}
+              {selectedTool.result !== undefined && (
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">
+                    Result
+                  </h4>
+                  <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                    {JSON.stringify(selectedTool.result, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* Error */}
+              {selectedTool.error && (
+                <div>
+                  <h4 className="text-sm font-semibold text-destructive mb-1">
+                    Error
+                  </h4>
+                  <pre className="text-xs bg-destructive/10 text-destructive p-3 rounded overflow-x-auto">
+                    {selectedTool.error}
+                  </pre>
+                </div>
+              )}
+
+              {/* Metadata */}
+              <div className="grid grid-cols-2 gap-4">
+                {selectedTool.duration !== undefined && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-muted-foreground mb-1">
+                      Duration
+                    </h4>
+                    <p className="text-sm">{selectedTool.duration}ms</p>
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">
+                    Created At
+                  </h4>
+                  <p className="text-xs">
+                    {new Date(selectedTool.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-1">
+                    Updated At
+                  </h4>
+                  <p className="text-xs">
+                    {new Date(selectedTool.updatedAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -543,11 +699,29 @@ interface StatusTickerSectionProps {
   hasError: boolean;
   onRetry: () => void;
   toolCallHistory: Array<{
+    toolName: string;
     displayTitle: string;
     displayDescription?: string;
+    arguments: Record<string, unknown>;
+    result?: unknown;
     status: "pending" | "success" | "error";
+    error?: string;
+    duration?: number;
     createdAt: string;
+    updatedAt: string;
   }>;
+  onToolClick: (tool: {
+    toolName: string;
+    displayTitle: string;
+    displayDescription?: string;
+    arguments: Record<string, unknown>;
+    result?: unknown;
+    status: "pending" | "success" | "error";
+    error?: string;
+    duration?: number;
+    createdAt: string;
+    updatedAt: string;
+  }) => void;
 }
 
 function StatusTickerSection({
@@ -557,6 +731,7 @@ function StatusTickerSection({
   hasError,
   onRetry,
   toolCallHistory,
+  onToolClick,
 }: StatusTickerSectionProps) {
   return (
     <div className="relative overflow-hidden space-y-0">
@@ -570,18 +745,22 @@ function StatusTickerSection({
 
       {/* MM Section with animated gradient */}
       <div className="relative overflow-hidden">
-        <div className={cn(
-          "absolute inset-0 animate-gradient-slow",
-          hasError
-            ? "bg-[linear-gradient(120deg,hsl(0,70%,50%,0.15),hsl(0,70%,50%,0.25),hsl(0,70%,50%,0.15))]"
-            : "bg-[linear-gradient(120deg,hsl(var(--primary)/0.2),hsl(var(--accent)/0.1),hsl(var(--secondary)/0.25))]"
-        )} />
-        <div className={cn(
-          "pointer-events-none absolute inset-0 animate-gradient-slow",
-          hasError
-            ? "bg-[linear-gradient(300deg,hsl(0,70%,50%,0.2),hsl(0,70%,50%,0.3),hsl(0,70%,50%,0.2))]"
-            : "bg-[linear-gradient(300deg,hsl(var(--secondary)/0.35),hsl(var(--accent)/0.25),hsl(var(--primary)/0.35))]"
-        )} />
+        <div
+          className={cn(
+            "absolute inset-0 animate-gradient-slow",
+            hasError
+              ? "bg-[linear-gradient(120deg,hsl(0,70%,50%,0.15),hsl(0,70%,50%,0.25),hsl(0,70%,50%,0.15))]"
+              : "bg-[linear-gradient(120deg,hsl(var(--primary)/0.2),hsl(var(--accent)/0.1),hsl(var(--secondary)/0.25))]"
+          )}
+        />
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-0 animate-gradient-slow",
+            hasError
+              ? "bg-[linear-gradient(300deg,hsl(0,70%,50%,0.2),hsl(0,70%,50%,0.3),hsl(0,70%,50%,0.2))]"
+              : "bg-[linear-gradient(300deg,hsl(var(--secondary)/0.35),hsl(var(--accent)/0.25),hsl(var(--primary)/0.35))]"
+          )}
+        />
         <div className="relative z-10">
           <TickerRow
             label="MiM"
@@ -603,6 +782,7 @@ function StatusTickerSection({
             isToolsRow
             isAnimating={isWorkflowActive}
             toolCallHistory={toolCallHistory}
+            onToolClick={onToolClick}
           />
         </div>
       </div>
@@ -619,11 +799,29 @@ interface TickerRowProps {
   hasError?: boolean;
   onRetry?: () => void;
   toolCallHistory?: Array<{
+    toolName: string;
     displayTitle: string;
     displayDescription?: string;
+    arguments: Record<string, unknown>;
+    result?: unknown;
     status: "pending" | "success" | "error";
+    error?: string;
+    duration?: number;
     createdAt: string;
+    updatedAt: string;
   }>;
+  onToolClick?: (tool: {
+    toolName: string;
+    displayTitle: string;
+    displayDescription?: string;
+    arguments: Record<string, unknown>;
+    result?: unknown;
+    status: "pending" | "success" | "error";
+    error?: string;
+    duration?: number;
+    createdAt: string;
+    updatedAt: string;
+  }) => void;
 }
 
 function TickerRow({
@@ -635,6 +833,7 @@ function TickerRow({
   hasError = false,
   onRetry,
   toolCallHistory = [],
+  onToolClick,
 }: TickerRowProps) {
   const getStatusIcon = (status: "pending" | "success" | "error") => {
     if (status === "pending") return "⏳";
@@ -663,12 +862,15 @@ function TickerRow({
                 {toolCallHistory.map((tool, index) => (
                   <div
                     key={`${tool.createdAt}-${index}`}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background/60 border border-border/40 shrink-0"
+                    onClick={() => onToolClick?.(tool)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background/60 border border-border/40 shrink-0 cursor-pointer hover:bg-background/80 transition-colors"
                   >
                     <span className="text-xs font-medium text-foreground/90 whitespace-nowrap">
                       {tool.displayTitle}
                     </span>
-                    <span className={cn("text-sm", getStatusColor(tool.status))}>
+                    <span
+                      className={cn("text-sm", getStatusColor(tool.status))}
+                    >
                       {getStatusIcon(tool.status)}
                     </span>
                   </div>
@@ -705,6 +907,25 @@ function TickerRow({
                   style={{ animationDelay: "600ms" }}
                 />
               </span>
+            ) : toolCallHistory.length > 0 ? (
+              <div className="flex flex-row gap-2 flex-nowrap">
+                {toolCallHistory.map((tool, index) => (
+                  <div
+                    key={`${tool.createdAt}-${index}`}
+                    onClick={() => onToolClick?.(tool)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background/60 border border-border/40 shrink-0 cursor-pointer hover:bg-background/80 transition-colors"
+                  >
+                    <span className="text-xs font-medium text-foreground/90 whitespace-nowrap">
+                      {tool.displayTitle}
+                    </span>
+                    <span
+                      className={cn("text-sm", getStatusColor(tool.status))}
+                    >
+                      {getStatusIcon(tool.status)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             ) : (
               <span className="text-xs text-muted-foreground/50">Idle</span>
             )}

@@ -42,6 +42,7 @@ export interface McpTokenPayload {
   userId: string;
   googleAccessToken?: string;
   scopes?: string[];
+  workflowRunId?: string;
   [key: string]: unknown;
 }
 
@@ -71,7 +72,8 @@ export interface McpTokenPayload {
 export async function generateMcpToken(
   userId: string,
   googleAccessToken?: string,
-  scopes?: readonly string[] | string[]
+  scopes?: readonly string[] | string[],
+  workflowRunId?: string
 ): Promise<string> {
   const secret = env.JWT_SECRET;
 
@@ -85,6 +87,10 @@ export async function generateMcpToken(
 
   if (scopes && scopes.length > 0) {
     payload.scopes = [...scopes]; // Convert readonly to mutable array
+  }
+
+  if (workflowRunId) {
+    payload.workflowRunId = workflowRunId;
   }
 
   return await new SignJWT(payload)
@@ -130,6 +136,7 @@ export async function verifyMcpToken(
       userId: payload.userId as string,
       googleAccessToken: payload.googleAccessToken as string | undefined,
       scopes: Array.isArray(payload.scopes) ? payload.scopes as string[] : undefined,
+      workflowRunId: payload.workflowRunId as string | undefined,
     };
   } catch (error) {
     console.error("MCP token verification failed:", error);

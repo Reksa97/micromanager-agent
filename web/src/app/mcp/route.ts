@@ -25,6 +25,8 @@ import { GetCurrentTimeHandler } from "@cocal/google-calendar-mcp/src/handlers/c
 import { env } from "@/env";
 import { OAuth2Client } from "@cocal/google-calendar-mcp/node_modules/google-auth-library";
 import { verifyMcpToken } from "@/lib/mcp-auth";
+import { logToolCall, getDefaultToolDisplayInfo } from "@/lib/workflow-runs";
+import { ObjectId } from "mongodb";
 
 const formatMcpResponse = (response: string): CallToolResult => ({
   content: [{ type: "text", text: response }],
@@ -32,29 +34,29 @@ const formatMcpResponse = (response: string): CallToolResult => ({
 
 // Scope map for tool authorization
 const TOOL_SCOPE_MAP: Record<string, string[]> = {
-  "get_user_context": ["read:user-context"],
-  "update_user_context": ["write:user-context"],
-  "get_conversation_messages": ["read:user-context"],
+  get_user_context: ["read:user-context"],
+  update_user_context: ["write:user-context"],
+  get_conversation_messages: ["read:user-context"],
   "list-calendars": ["calendar:read"],
-  "list_calendars": ["calendar:read"],
+  list_calendars: ["calendar:read"],
   "list-events": ["calendar:read"],
-  "list_events": ["calendar:read"],
+  list_events: ["calendar:read"],
   "search-events": ["calendar:read"],
-  "search_events": ["calendar:read"],
+  search_events: ["calendar:read"],
   "get-event": ["calendar:read"],
-  "get_event": ["calendar:read"],
+  get_event: ["calendar:read"],
   "list-colors": ["calendar:read"],
-  "list_colors": ["calendar:read"],
+  list_colors: ["calendar:read"],
   "create-event": ["calendar:write"],
-  "create_event": ["calendar:write"],
+  create_event: ["calendar:write"],
   "update-event": ["calendar:write"],
-  "update_event": ["calendar:write"],
+  update_event: ["calendar:write"],
   "delete-event": ["calendar:write"],
-  "delete_event": ["calendar:write"],
+  delete_event: ["calendar:write"],
   "get-freebusy": ["calendar:read"],
-  "get_freebusy": ["calendar:read"],
+  get_freebusy: ["calendar:read"],
   "get-current-time": ["calendar:read"],
-  "get_current_time": ["calendar:read"],
+  get_current_time: ["calendar:read"],
 };
 
 // Helper functions for scope checking
@@ -120,15 +122,61 @@ const handler = createMcpHandler(
       "Get the user context",
       {
         getAllData: z.boolean().optional(),
+        log_message: z
+          .string()
+          .optional()
+          .describe(
+            "Human-readable description of what you're doing with this tool (e.g., 'Check user preferences', 'Save new task')"
+          ),
       },
-      async ({ getAllData }, extra) => {
+      async ({ getAllData, log_message }, extra) => {
+        const toolCallId = new ObjectId().toString();
+        const workflowRunId = extra?.authInfo?.extra?.workflowRunId as
+          | string
+          | undefined;
+        const toolName = "get_user_context";
+
+        // Get display info from agent's log_message or fallback
+        const displayInfo = log_message
+          ? { displayTitle: log_message, displayDescription: "" }
+          : getDefaultToolDisplayInfo(toolName);
+
+        // Log tool start (only if workflowRunId exists)
+        if (workflowRunId) {
+          await logToolCall(workflowRunId, toolCallId, {
+            toolName,
+            displayTitle: displayInfo.displayTitle,
+            displayDescription: displayInfo.displayDescription,
+            arguments: { getAllData },
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).catch((err) =>
+            console.error("Failed to log tool call start:", err)
+          );
+        }
+
         // Check scope authorization
         const requiredScopes = TOOL_SCOPE_MAP["get_user_context"];
         if (!userHasScope(requiredScopes, extra?.authInfo)) {
-          console.error("[MCP Auth] Missing required scope for get_user_context");
-          return formatMcpResponse(
-            "Access denied: Missing required scope 'read:user-context'"
+          console.error(
+            "[MCP Auth] Missing required scope for get_user_context"
           );
+          const errorMsg =
+            "Access denied: Missing required scope 'read:user-context'";
+
+          // Log error
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+
+          return formatMcpResponse(errorMsg);
         }
 
         try {
@@ -136,7 +184,20 @@ const handler = createMcpHandler(
           console.log("get_user_context", { getAllData, userId });
           if (!userId) {
             console.error("User ID is required", { authInfo: extra?.authInfo });
-            return formatMcpResponse("User ID is required");
+            const errorMsg = "User ID is required";
+
+            // Log error
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+
+            return formatMcpResponse(errorMsg);
           }
           const userContextDoc = await getUserContextDocument(userId);
           console.log("User context fetched", {
@@ -144,16 +205,38 @@ const handler = createMcpHandler(
             userContextDoc,
             getAllData,
           });
+
+          // Log success
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "success",
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call success:", err)
+            );
+          }
+
           return formatMcpResponse(
             JSON.stringify(userContextDoc.data, null, 2)
           );
         } catch (error) {
           console.error("Failed to get user context", error);
-          return formatMcpResponse(
-            `Failed to get user context: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`
-          );
+          const errorMsg = `Failed to get user context: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`;
+
+          // Log error
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+
+          return formatMcpResponse(errorMsg);
         }
       }
     );
@@ -164,22 +247,86 @@ const handler = createMcpHandler(
         contextUpdates: z
           .array(z.object({ path: z.string(), value: z.any() }))
           .optional()
-          .describe("Array of updates. Path uses dot notation. Value accepts any type (string, number, object, array, etc.)"),
-        contextDeletes: z.array(z.string()).optional().describe("Array of paths to delete (dot notation)"),
+          .describe(
+            "Array of updates. Path uses dot notation. Value accepts any type (string, number, object, array, etc.)"
+          ),
+        contextDeletes: z
+          .array(z.string())
+          .optional()
+          .describe("Array of paths to delete (dot notation)"),
+        log_message: z
+          .string()
+          .optional()
+          .describe(
+            "Human-readable description of what you're doing with this tool (e.g., 'Check user preferences', 'Save new task')"
+          ),
       },
-      async ({ contextUpdates, contextDeletes }, extra) => {
+      async ({ contextUpdates, contextDeletes, log_message }, extra) => {
+        const toolCallId = new ObjectId().toString();
+        const workflowRunId = extra?.authInfo?.extra?.workflowRunId as
+          | string
+          | undefined;
+        const toolName = "update_user_context";
+
+        // Get display info from agent's log_message or fallback
+        const displayInfo = log_message
+          ? { displayTitle: log_message, displayDescription: "" }
+          : getDefaultToolDisplayInfo(toolName);
+
+        // Log tool start (only if workflowRunId exists)
+        if (workflowRunId) {
+          await logToolCall(workflowRunId, toolCallId, {
+            toolName,
+            displayTitle: displayInfo.displayTitle,
+            displayDescription: displayInfo.displayDescription,
+            arguments: { contextUpdates, contextDeletes },
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).catch((err) =>
+            console.error("Failed to log tool call start:", err)
+          );
+        }
+
         // Check scope authorization
         const requiredScopes = TOOL_SCOPE_MAP["update_user_context"];
         if (!userHasScope(requiredScopes, extra?.authInfo)) {
-          console.error("[MCP Auth] Missing required scope for update_user_context");
-          return formatMcpResponse(
-            "Access denied: Missing required scope 'write:user-context'"
+          console.error(
+            "[MCP Auth] Missing required scope for update_user_context"
           );
+          const errorMsg =
+            "Access denied: Missing required scope 'write:user-context'";
+
+          // Log error
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+
+          return formatMcpResponse(errorMsg);
         }
 
         try {
           if (!contextUpdates && !contextDeletes) {
-            return formatMcpResponse("No updates or deletes provided");
+            const errorMsg = "No updates or deletes provided";
+
+            // Log error
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+
+            return formatMcpResponse(errorMsg);
           }
           const userId = extra?.authInfo?.clientId;
           console.log("update_user_context", {
@@ -189,10 +336,23 @@ const handler = createMcpHandler(
           });
           if (!userId) {
             console.error("User ID is required", { authInfo: extra?.authInfo });
-            return formatMcpResponse("User ID is required");
+            const errorMsg = "User ID is required";
+
+            // Log error
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+
+            return formatMcpResponse(errorMsg);
           }
           let userContextDoc: UserContextDocument | null = null;
-          if (contextUpdates) {
+          if (contextUpdates && contextUpdates.length > 0) {
             userContextDoc = await updateUserContextDocument(
               userId,
               contextUpdates
@@ -202,7 +362,7 @@ const handler = createMcpHandler(
               contextUpdates,
             });
           }
-          if (contextDeletes) {
+          if (contextDeletes && contextDeletes.length > 0) {
             userContextDoc = await updateUserContextDocument(
               userId,
               contextDeletes.map((path) => ({ path, value: undefined }))
@@ -216,20 +376,41 @@ const handler = createMcpHandler(
             userId,
             userContext: JSON.stringify(userContextDoc!.data),
           });
+
+          // Log success
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "success",
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call success:", err)
+            );
+          }
+
           return formatMcpResponse(
             JSON.stringify(userContextDoc!.data, null, 2)
           );
         } catch (error) {
           console.error("Failed to update user context", error);
-          return formatMcpResponse(
-            `Failed to update user context: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`
-          );
+          const errorMsg = `Failed to update user context: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`;
+
+          // Log error
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+
+          return formatMcpResponse(errorMsg);
         }
       }
     );
-
     server.tool(
       "get_conversation_messages",
       "Get recent conversation messages. Returns messages in chronological order (oldest first).",
@@ -241,22 +422,68 @@ const handler = createMcpHandler(
           .max(100)
           .optional()
           .default(20)
-          .describe("Maximum number of messages to retrieve (default: 20, max: 100)"),
+          .describe(
+            "Maximum number of messages to retrieve (default: 20, max: 100)"
+          ),
         before_message_id: z
           .string()
           .optional()
           .describe("Optional: Only get messages before this message ID"),
+        log_message: z
+          .string()
+          .optional()
+          .describe(
+            "Human-readable description of what you're doing with this tool (e.g., 'Check user preferences', 'Save new task')"
+          ),
       },
-      async ({ limit, before_message_id }, extra) => {
+      async ({ limit, before_message_id, log_message }, extra) => {
+        const toolCallId = new ObjectId().toString();
+        const workflowRunId = extra?.authInfo?.extra?.workflowRunId as
+          | string
+          | undefined;
+        const toolName = "get_conversation_messages";
+
+        // Get display info from agent's log_message or fallback
+        const displayInfo = log_message
+          ? { displayTitle: log_message, displayDescription: "" }
+          : getDefaultToolDisplayInfo(toolName);
+
+        // Log tool start (only if workflowRunId exists)
+        if (workflowRunId) {
+          await logToolCall(workflowRunId, toolCallId, {
+            toolName,
+            displayTitle: displayInfo.displayTitle,
+            displayDescription: displayInfo.displayDescription,
+            arguments: { limit, before_message_id },
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).catch((err) =>
+            console.error("Failed to log tool call start:", err)
+          );
+        }
+
         // Check scope authorization
         const requiredScopes = TOOL_SCOPE_MAP["get_conversation_messages"];
         if (!userHasScope(requiredScopes, extra?.authInfo)) {
           console.error(
             "[MCP Auth] Missing required scope for get_conversation_messages"
           );
-          return formatMcpResponse(
-            "Access denied: Missing required scope 'read:user-context'"
-          );
+          const errorMsg =
+            "Access denied: Missing required scope 'read:user-context'";
+
+          // Log error
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+
+          return formatMcpResponse(errorMsg);
         }
 
         try {
@@ -269,7 +496,20 @@ const handler = createMcpHandler(
 
           if (!userId) {
             console.error("User ID is required", { authInfo: extra?.authInfo });
-            return formatMcpResponse("User ID is required");
+            const errorMsg = "User ID is required";
+
+            // Log error
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+
+            return formatMcpResponse(errorMsg);
           }
 
           // Get messages from MongoDB
@@ -279,7 +519,9 @@ const handler = createMcpHandler(
           let filteredMessages = messages;
           if (before_message_id) {
             const beforeIndex = messages.findIndex(
-              (msg) => msg.id === before_message_id || msg._id?.toString() === before_message_id
+              (msg) =>
+                msg.id === before_message_id ||
+                msg._id?.toString() === before_message_id
             );
             if (beforeIndex > 0) {
               filteredMessages = messages.slice(0, beforeIndex);
@@ -301,37 +543,140 @@ const handler = createMcpHandler(
             limit,
           });
 
+          // Log success
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "success",
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call success:", err)
+            );
+          }
+
           return formatMcpResponse(JSON.stringify(formattedMessages, null, 2));
         } catch (error) {
           console.error("Failed to get conversation messages", error);
-          return formatMcpResponse(
-            `Failed to get conversation messages: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`
-          );
+          const errorMsg = `Failed to get conversation messages: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`;
+
+          // Log error
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+
+          return formatMcpResponse(errorMsg);
         }
       }
     );
 
     ToolRegistry.getToolsWithSchemas().forEach((tool) => {
-      server.registerTool(
+      const originalZodSchema = ToolSchemas[tool.name];
+
+      // const extendedZodSchema = z.object({
+      //   log_message: z
+      //     .string()
+      //     .optional()
+      //     .describe(
+      //       "Short human-readable description of what you're doing with this tool."
+      //     ),
+      //   tool_args: originalZodSchema,
+      // });
+
+      // Extract the JSON schema shape from the extended Zod schema
+      // const extendedSchemaShape =
+      //   ToolRegistry.extractSchemaShape(extendedZodSchema);
+
+      server.tool(
         tool.name,
+        tool.description,
         {
-          description: tool.description,
-          inputSchema: ToolRegistry.extractSchemaShape(ToolSchemas[tool.name]),
+          log_message: z
+            .string()
+            .optional()
+            .describe(
+              "Short human-readable description of what you're doing with this tool."
+            ),
+          tool_args: originalZodSchema,
         },
         async (args, extra) => {
-          // Check scope authorization
-          const requiredScopes =
-            TOOL_SCOPE_MAP[tool.name] ?? TOOL_SCOPE_MAP[tool.name.replace("_", "-")] ?? [];
-          if (!userHasScope(requiredScopes, extra?.authInfo)) {
-            console.error(`[MCP Auth] Missing required scope for ${tool.name}`, {
-              required: requiredScopes,
-              userScopes: extra?.authInfo?.scopes,
+          const toolCallId = new ObjectId().toString();
+          if (!extra) {
+            console.warn("[MCP] Extra is undefined", {
+              args,
+              extra,
             });
-            return formatMcpResponse(
-              `Access denied: Missing required scope for ${tool.name}. Required: ${requiredScopes.join(", ")}`
+          }
+          const authInfo = extra?.authInfo as AuthInfo | undefined;
+          if (!authInfo) {
+            console.error("[MCP] Auth info is required", { args, extra });
+            return formatMcpResponse("Auth info is required");
+          }
+          const workflowRunId = authInfo?.extra?.workflowRunId as
+            | string
+            | undefined;
+          const toolName = tool.name;
+
+          console.log("[MCP] Tool called", { toolName, args, extra });
+
+          // Extract log_message from args
+          const { log_message, tool_args } = args as {
+            log_message?: string;
+            tool_args?: Record<string, unknown>;
+          };
+
+          // Get display info from agent's log_message or fallback
+          const displayInfo = log_message
+            ? { displayTitle: log_message, displayDescription: "" }
+            : getDefaultToolDisplayInfo(toolName);
+
+          // Log tool start (only if workflowRunId exists)
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              toolName,
+              displayTitle: displayInfo.displayTitle,
+              displayDescription: displayInfo.displayDescription,
+              arguments: tool_args,
+              status: "pending",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call start:", err)
             );
+          }
+
+          // Check scope authorization
+          const requiredScopes = TOOL_SCOPE_MAP[tool.name] ?? [];
+          if (!userHasScope(requiredScopes, authInfo)) {
+            console.error(
+              `[MCP Auth] Missing required scope for ${tool.name}`,
+              {
+                required: requiredScopes,
+                userScopes: authInfo?.scopes,
+              }
+            );
+            const errorMsg = `Access denied: Missing required scope for ${
+              tool.name
+            }. Required: ${requiredScopes.join(", ")}`;
+
+            // Log error
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+
+            return formatMcpResponse(errorMsg);
           }
 
           try {
@@ -340,26 +685,61 @@ const handler = createMcpHandler(
               clientSecret: env.GOOGLE_CLIENT_SECRET,
             });
 
-            const googleAccessToken = extra?.authInfo?.extra?.googleAccessToken;
+            const googleAccessToken = authInfo?.extra?.googleAccessToken;
 
             if (!googleAccessToken || typeof googleAccessToken !== "string") {
-              console.log("Missing google access token");
-              return formatMcpResponse("Missing Google access token");
+              console.log("[MCP] Missing google access token");
+              const errorMsg = "Missing Google access token";
+
+              // Log error
+              if (workflowRunId) {
+                await logToolCall(workflowRunId, toolCallId, {
+                  status: "error",
+                  error: errorMsg,
+                  updatedAt: new Date(),
+                }).catch((err) =>
+                  console.error("Failed to log tool call error:", err)
+                );
+              }
+
+              return formatMcpResponse(errorMsg);
             }
 
             oAuth2Client.setCredentials({ access_token: googleAccessToken });
             const result = await new calendarToolHandlers[tool.name]().runTool(
-              args,
+              tool_args,
               oAuth2Client
             );
+
+            // Log success
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "success",
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call success:", err)
+              );
+            }
+
             return formatMcpResponse(JSON.stringify(result, null, 2));
           } catch (error) {
             console.error("Failed ", error);
-            return formatMcpResponse(
-              `Failed to invoke ${tool.name}: ${
-                error instanceof Error ? error.message : "Unknown error"
-              }`
-            );
+            const errorMsg = `Failed to invoke ${tool.name}: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`;
+
+            // Log error
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+
+            return formatMcpResponse(errorMsg);
           }
         }
       );
@@ -385,7 +765,8 @@ const handler = createMcpHandler(
         },
         ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => {
           const scopes = TOOL_SCOPE_MAP[tool.name] || [];
-          const scopeStr = scopes.length > 0 ? ` (requires: ${scopes.join(", ")})` : "";
+          const scopeStr =
+            scopes.length > 0 ? ` (requires: ${scopes.join(", ")})` : "";
           return {
             ...rest,
             [tool.name.replace("-", "_")]: {
@@ -462,7 +843,7 @@ const verifyToken = async (
   const payload = await verifyMcpToken(bearerToken);
 
   if (!payload) {
-    console.error("Invalid or expired MCP token");
+    console.error("[MCP Auth] Invalid or expired MCP token");
     return undefined;
   }
 
@@ -489,6 +870,7 @@ const verifyToken = async (
     hasGoogleAccessToken: !!payload.googleAccessToken,
     tokenScopes: payload.scopes,
     assignedScopes: userScopes,
+    workflowRunId: payload.workflowRunId,
   });
 
   return {
@@ -497,6 +879,7 @@ const verifyToken = async (
     clientId: payload.userId,
     extra: {
       googleAccessToken: payload.googleAccessToken,
+      workflowRunId: payload.workflowRunId,
     },
   };
 };

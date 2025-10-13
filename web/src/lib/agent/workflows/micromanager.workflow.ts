@@ -9,7 +9,7 @@ import {
 import { getHostedMcpParams } from "./helpers";
 import { logUsage, calculateCost } from "@/lib/usage-tracking";
 import type { UsageLog } from "@/lib/usage-tracking";
-import { logMcpToolCall, generateToolDisplayInfo } from "@/lib/mcp-tool-logs";
+import { createWorkflowRun, updateWorkflowRun } from "@/lib/workflow-runs";
 import { ObjectId } from "mongodb";
 import { MODELS } from "@/lib/utils";
 import { getRecentMessages } from "@/lib/conversations";
@@ -60,7 +60,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       "get-current-time",
     ],
     requireApproval: "never",
-    ...(await getHostedMcpParams(workflow.user_id)),
+    ...(await getHostedMcpParams(workflow.user_id, sessionId)),
   });
   const micromanager = new Agent({
     name: "Micromanager",
@@ -93,6 +93,16 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
 
   // Add the current user message at the end
   conversationHistory.push(user(workflow.input_as_text));
+
+  // Create workflow run document
+  await createWorkflowRun({
+    userId: workflow.user_id,
+    sessionId,
+    userMessage: workflow.input_as_text,
+    status: "running",
+    toolCalls: {},
+  });
+
   const runner = new Runner({
     traceMetadata: {
       __trace_source__: "agent-builder",
@@ -134,6 +144,13 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       error: errorMessage,
     });
 
+    // Update workflow run status
+    await updateWorkflowRun(sessionId, {
+      status: "error",
+      assistantMessage: "Connection lost. Try again later.",
+      completedAt: new Date(),
+    });
+
     // Return user-friendly error instead of throwing
     return {
       output_text: "Connection lost. Try again later.",
@@ -147,9 +164,16 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
   );
 
   if (!micromanagerResultTemp.finalOutput) {
+    // Update workflow run status
+    await updateWorkflowRun(sessionId, {
+      status: "error",
+      assistantMessage: "Error processing response. Try again.",
+      completedAt: new Date(),
+    });
+
     // Return user-friendly error instead of throwing
     return {
-      output_text: "Virhe vastauksen käsittelyssä. Yritä uudelleen.",
+      output_text: "Error processing response. Try again.",
       error: true,
       errorMessage: "Agent result is undefined",
     };
@@ -209,42 +233,12 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
     success: true,
   });
 
-  // Log MCP tool calls
-  const safeLogToolCall = async (
-    log: Omit<Parameters<typeof logMcpToolCall>[0], "createdAt" | "updatedAt">
-  ): Promise<void> => {
-    try {
-      await logMcpToolCall(log);
-    } catch (error) {
-      console.error("Failed to log MCP tool call:", error);
-    }
-  };
-
-  // Log each tool call from the workflow execution
-  for (const item of micromanagerResultTemp.newItems) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawItem = item.rawItem as any;
-    if (rawItem.type === "hosted_tool_call") {
-      const toolName = rawItem.name || "unknown";
-      const toolArgs = rawItem.arguments || {};
-      const toolResult = rawItem.result;
-      const hasError = rawItem.error !== undefined;
-
-      const displayInfo = generateToolDisplayInfo(toolName);
-
-      await safeLogToolCall({
-        userId: workflow.user_id,
-        sessionId,
-        toolName,
-        displayTitle: displayInfo.displayTitle,
-        displayDescription: displayInfo.displayDescription,
-        arguments: toolArgs,
-        result: toolResult,
-        status: hasError ? "error" : "success",
-        error: hasError ? String(rawItem.error) : undefined,
-      });
-    }
-  }
+  // Update workflow run status
+  await updateWorkflowRun(sessionId, {
+    status: "completed",
+    assistantMessage: micromanagerResult.output_text,
+    completedAt: new Date(),
+  });
 
   return micromanagerResult;
 };
