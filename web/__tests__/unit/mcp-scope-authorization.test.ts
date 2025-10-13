@@ -66,6 +66,7 @@ describe('MCP Scope Authorization', () => {
       const toolNames = result.result.tools.map((t: any) => t.name);
       expect(toolNames).toContain('get_user_context');
       expect(toolNames).toContain('update_user_context');
+      expect(toolNames).toContain('get_conversation_messages');
     });
   });
 
@@ -102,6 +103,31 @@ describe('MCP Scope Authorization', () => {
       const data = JSON.parse(result.result.content[0].text);
       expect(data['/test/jest_scope_test']).toContain('Tested at');
     });
+
+    it('should successfully get conversation messages with proper scope', async () => {
+      const result = await mcpRequest('tools/call', {
+        name: 'get_conversation_messages',
+        arguments: {
+          limit: 10
+        }
+      });
+
+      expect(result.result).toBeDefined();
+      expect(result.result.content).toBeDefined();
+      expect(result.result.content[0].type).toBe('text');
+
+      const messages = JSON.parse(result.result.content[0].text);
+      expect(Array.isArray(messages)).toBe(true);
+
+      // Verify message structure if messages exist
+      if (messages.length > 0) {
+        const firstMessage = messages[0];
+        expect(firstMessage).toHaveProperty('id');
+        expect(firstMessage).toHaveProperty('role');
+        expect(firstMessage).toHaveProperty('content');
+        expect(firstMessage).toHaveProperty('createdAt');
+      }
+    });
   });
 
   describe('Scope Enforcement Documentation', () => {
@@ -117,6 +143,7 @@ describe('MCP Scope Authorization', () => {
       // Verify scope requirements are documented
       expect(tools.get_user_context.description).toContain('read:user-context');
       expect(tools.update_user_context.description).toContain('write:user-context');
+      expect(tools.get_conversation_messages.description).toContain('read:user-context');
 
       // Verify calendar tools have scope requirements
       if (tools.list_calendars) {

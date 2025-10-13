@@ -10,36 +10,85 @@ import { test, expect, Page } from "@playwright/test";
  * 4. Completes and shows main chat interface
  */
 
-const TEST_TELEGRAM_ID_NEW_USER = 888000001; // For first-load test
-const TEST_TELEGRAM_ID_RETURNING = 888000002; // For returning user test
-const TEST_TELEGRAM_ID_POLLING = 888000003; // For polling test
-const TEST_USER_NAME = "First Load Test User";
+// Test user credentials for E2E testing
+const TEST_USERS = [
+  {
+    email: "test1@e2e.local",
+    password: "TestPassword123!",
+    name: "Test User 1",
+  },
+  {
+    email: "test2@e2e.local",
+    password: "TestPassword123!",
+    name: "Test User 2",
+  },
+  {
+    email: "test3@e2e.local",
+    password: "TestPassword123!",
+    name: "Test User 3",
+  },
+];
 
-// Mock Telegram authentication using dev mock mode
-async function authenticateAsTelegramUser(page: Page, telegramId: number) {
-  // Use the built-in mock mode for development
-  await page.goto(
-    `https://localhost:3000/telegram?mock_secret=dev-secret&mock_user_id=${telegramId}`
-  );
+// Authenticate using test-login page with real next-auth
+async function authenticateAsTelegramUser(
+  page: Page,
+  userIndex: number
+) {
+  const testUser = TEST_USERS[userIndex];
+
+  // First, ensure user exists (try to register, ignore if already exists)
+  await page.goto("https://localhost:3000/register");
+  await page.fill('input[name="name"]', testUser.name);
+  await page.fill('input[name="email"]', testUser.email);
+  await page.fill('input[name="password"]', testUser.password);
+  await page.click('button[type="submit"]').catch(() => {
+    // User might already exist, that's okay
+  });
+
+  // Wait a bit for registration to complete
+  await page.waitForTimeout(1000);
+
+  // Use the test-login page with real credentials
+  await page.goto("https://localhost:3000/test-login");
+
+  // Fill in the email and password
+  await page.fill('input[type="email"]', testUser.email);
+  await page.fill('input[type="password"]', testUser.password);
+
+  // Click sign in button
+  await page.click('button[type="submit"]');
 
   // Wait for authentication to complete and redirect
   await page.waitForURL("**/telegram-app**", { timeout: 10000 });
 }
 
 // Helper to reset user's first-load progress
-async function resetUserProgress(page: Page, telegramId: number) {
-  // Authenticate to get token
-  const authResponse = await page.evaluate(async (userId) => {
-    const res = await fetch("/api/auth/telegram", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        mockSecret: "dev-secret",
-        mockUser: { id: userId },
-      }),
-    });
-    return res.json();
-  }, telegramId);
+async function resetUserProgress(page: Page, userIndex: number) {
+  const testUser = TEST_USERS[userIndex];
+
+  // Authenticate to get token via test-login page
+  const authResponse = await page.evaluate(
+    async ({ email, password }) => {
+      // Sign in with next-auth
+      const signInRes = await fetch("/api/auth/callback/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!signInRes.ok) {
+        return { error: "Sign in failed" };
+      }
+
+      // Convert session to telegram token
+      const convertRes = await fetch("/api/dev/test-login/convert-session", {
+        method: "POST",
+      });
+
+      return convertRes.json();
+    },
+    { email: testUser.email, password: testUser.password }
+  );
 
   if (authResponse.token) {
     // Reset progress
@@ -66,7 +115,7 @@ test.describe("First-Load Experience", () => {
 
   test("should show first-load experience for new users", async ({ page }) => {
     // Reset user data to ensure fresh first-load experience
-    await resetUserProgress(page, TEST_TELEGRAM_ID_NEW_USER);
+    await resetUserProgress(page, 0);
 
     // Clear storage again after reset
     await page.evaluate(() => {
@@ -74,8 +123,8 @@ test.describe("First-Load Experience", () => {
       sessionStorage.clear();
     });
 
-    // Authenticate as a new Telegram user (will trigger first-load)
-    await authenticateAsTelegramUser(page, TEST_TELEGRAM_ID_NEW_USER);
+    // Authenticate as test user (will trigger first-load)
+    await authenticateAsTelegramUser(page, 0);
 
     // Wait for first-load experience to appear
     await page.waitForSelector("text=Welcome", { timeout: 5000 });
@@ -103,7 +152,7 @@ test.describe("First-Load Experience", () => {
 
   test("should not show first-load for returning users", async ({ page }) => {
     // First auth to complete first-load
-    await authenticateAsTelegramUser(page, TEST_TELEGRAM_ID_RETURNING);
+    await authenticateAsTelegramUser(page, 1);
     await page.waitForSelector("text=Micromanager", { timeout: 15000 });
 
     // Clear storage and re-authenticate - should NOT show first-load again
@@ -113,7 +162,7 @@ test.describe("First-Load Experience", () => {
       sessionStorage.clear();
     });
 
-    await authenticateAsTelegramUser(page, TEST_TELEGRAM_ID_RETURNING);
+    await authenticateAsTelegramUser(page, 1);
 
     // Should NOT see first-load experience
     // Instead, should see chat interface immediately
@@ -126,7 +175,7 @@ test.describe("First-Load Experience", () => {
 
   test("should poll backend for real progress updates", async ({ page }) => {
     // Reset user data to ensure fresh first-load experience
-    await resetUserProgress(page, TEST_TELEGRAM_ID_POLLING);
+    await resetUserProgress(page, 2);
 
     // Clear storage again after reset
     await page.evaluate(() => {
@@ -142,8 +191,8 @@ test.describe("First-Load Experience", () => {
       }
     });
 
-    // Authenticate as a new Telegram user
-    await authenticateAsTelegramUser(page, TEST_TELEGRAM_ID_POLLING);
+    // Authenticate as test user
+    await authenticateAsTelegramUser(page, 2);
 
     // Wait for first-load to start
     await page.waitForSelector("text=Welcome", { timeout: 5000 });

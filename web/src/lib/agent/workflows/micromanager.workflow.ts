@@ -1,10 +1,18 @@
-import { hostedMcpTool, Agent, AgentInputItem, Runner } from "@openai/agents";
+import {
+  hostedMcpTool,
+  Agent,
+  AgentInputItem,
+  Runner,
+  user,
+  assistant,
+} from "@openai/agents";
 import { getHostedMcpParams } from "./helpers";
 import { logUsage, calculateCost } from "@/lib/usage-tracking";
 import type { UsageLog } from "@/lib/usage-tracking";
 import { logMcpToolCall, generateToolDisplayInfo } from "@/lib/mcp-tool-logs";
 import { ObjectId } from "mongodb";
 import { MODELS } from "@/lib/utils";
+import { getRecentMessages } from "@/lib/conversations";
 
 type WorkflowInput = {
   input_as_text: string;
@@ -39,6 +47,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
     allowedTools: [
       "get_user_context",
       "update_user_context",
+      "get_conversation_messages",
       "list-calendars",
       "list-events",
       "search-events",
@@ -56,7 +65,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
   const micromanager = new Agent({
     name: "Micromanager",
     instructions:
-      "You are a helpful micromanager who wants to learn about the user constantly. Use the available tools to understand the user context before sending them a short, personalised message. If the user asks you to do something, even if it is unclear, do something useful. Never just ask for confirmation or a clarification, always do something useful. Keep the writable user context concise and add details there when you learn something from tool usage or from the user messages.",
+      "You are a helpful micromanager who wants to learn about the user constantly. Use the available tools to understand the user context before sending them a short, personalised message. If the user asks you to do something, even if it is unclear, do something useful. Never just ask for confirmation or a clarification, always do something useful. Keep the writable user context concise and add details there when you learn something from tool usage or from the user messages.\n\nYou have access to recent conversation history through the conversation messages array. If you need more context from earlier in the conversation, you can use the get_conversation_messages tool to fetch additional messages.",
     model: modelName,
     tools: [mcp],
     modelSettings: {
@@ -67,17 +76,23 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       store: true,
     },
   });
-  const conversationHistory: AgentInputItem[] = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "input_text",
-          text: workflow.input_as_text,
-        },
-      ],
-    },
-  ];
+  // Fetch recent messages from MongoDB (excluding the current message which will be added below)
+  // Get 10 messages, but don't include the very latest user message that just came in
+  const recentMessages = await getRecentMessages(workflow.user_id, 10);
+
+  // Build conversation history from MongoDB messages
+  const conversationHistory: AgentInputItem[] = recentMessages
+    .filter((msg) => msg.role === "user" || msg.role === "assistant")
+    .map((msg) => {
+      if (msg.role === "user") {
+        return user(msg.content);
+      } else {
+        return assistant(msg.content);
+      }
+    });
+
+  // Add the current user message at the end
+  conversationHistory.push(user(workflow.input_as_text));
   const runner = new Runner({
     traceMetadata: {
       __trace_source__: "agent-builder",
@@ -121,7 +136,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
 
     // Return user-friendly error instead of throwing
     return {
-      output_text: "Yhteys katkesi. Yritä hetken päästä uudestaan.",
+      output_text: "Connection lost. Try again later.",
       error: true,
       errorMessage,
     };

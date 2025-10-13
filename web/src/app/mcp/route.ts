@@ -3,6 +3,7 @@ import {
   updateUserContextDocument,
   UserContextDocument,
 } from "@/lib/user-context";
+import { getRecentMessages } from "@/lib/conversations";
 import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
@@ -33,6 +34,7 @@ const formatMcpResponse = (response: string): CallToolResult => ({
 const TOOL_SCOPE_MAP: Record<string, string[]> = {
   "get_user_context": ["read:user-context"],
   "update_user_context": ["write:user-context"],
+  "get_conversation_messages": ["read:user-context"],
   "list-calendars": ["calendar:read"],
   "list_calendars": ["calendar:read"],
   "list-events": ["calendar:read"],
@@ -228,6 +230,89 @@ const handler = createMcpHandler(
       }
     );
 
+    server.tool(
+      "get_conversation_messages",
+      "Get recent conversation messages. Returns messages in chronological order (oldest first).",
+      {
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .default(20)
+          .describe("Maximum number of messages to retrieve (default: 20, max: 100)"),
+        before_message_id: z
+          .string()
+          .optional()
+          .describe("Optional: Only get messages before this message ID"),
+      },
+      async ({ limit, before_message_id }, extra) => {
+        // Check scope authorization
+        const requiredScopes = TOOL_SCOPE_MAP["get_conversation_messages"];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          console.error(
+            "[MCP Auth] Missing required scope for get_conversation_messages"
+          );
+          return formatMcpResponse(
+            "Access denied: Missing required scope 'read:user-context'"
+          );
+        }
+
+        try {
+          const userId = extra?.authInfo?.clientId;
+          console.log("get_conversation_messages", {
+            limit,
+            before_message_id,
+            userId,
+          });
+
+          if (!userId) {
+            console.error("User ID is required", { authInfo: extra?.authInfo });
+            return formatMcpResponse("User ID is required");
+          }
+
+          // Get messages from MongoDB
+          const messages = await getRecentMessages(userId, limit ?? 20);
+
+          // Filter by before_message_id if provided
+          let filteredMessages = messages;
+          if (before_message_id) {
+            const beforeIndex = messages.findIndex(
+              (msg) => msg.id === before_message_id || msg._id?.toString() === before_message_id
+            );
+            if (beforeIndex > 0) {
+              filteredMessages = messages.slice(0, beforeIndex);
+            }
+          }
+
+          // Format for agent consumption
+          const formattedMessages = filteredMessages.map((msg) => ({
+            id: msg.id || msg._id?.toString(),
+            role: msg.role,
+            content: msg.content,
+            source: msg.source,
+            createdAt: msg.createdAt?.toISOString(),
+          }));
+
+          console.log("Conversation messages fetched", {
+            userId,
+            count: formattedMessages.length,
+            limit,
+          });
+
+          return formatMcpResponse(JSON.stringify(formattedMessages, null, 2));
+        } catch (error) {
+          console.error("Failed to get conversation messages", error);
+          return formatMcpResponse(
+            `Failed to get conversation messages: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+      }
+    );
+
     ToolRegistry.getToolsWithSchemas().forEach((tool) => {
       server.registerTool(
         tool.name,
@@ -293,6 +378,10 @@ const handler = createMcpHandler(
         },
         update_user_context: {
           description: "Update the user context (requires: write:user-context)",
+        },
+        get_conversation_messages: {
+          description:
+            "Get recent conversation messages (requires: read:user-context)",
         },
         ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => {
           const scopes = TOOL_SCOPE_MAP[tool.name] || [];

@@ -67,7 +67,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    // Get user's Telegram info
     const telegramUser = await getTelegramUserByUserId(userId);
     console.log("Telegram user", { userId, telegramUser });
     if (!telegramUser || !telegramUser.telegramChatId) {
@@ -86,13 +85,18 @@ export async function POST(req: NextRequest) {
     workflowAttempted = true;
     const workflowResult = await runWorkflow({
       input_as_text:
-        "This is a test notification triggered by the user. Review my context and send me a brief, personalized message.",
+        "Send a notification triggered by the user changing their notification settings. Review my context and send me a brief, personalized message.",
       user_id: userId,
       source: "web",
       usageTaskType: "notification",
       model: NOTIFICATION_MODEL,
     });
     workflowCompleted = true;
+
+    console.log("[Trigger Notification] Workflow result", {
+      workflowResult,
+      telegramUser,
+    });
 
     // Send message
     await sendTelegramMessage(
