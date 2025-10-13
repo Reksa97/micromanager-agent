@@ -25,7 +25,9 @@ export async function POST(req: NextRequest) {
         await jwtVerify(token, env.JWT_SECRET);
         isValid = true;
       } catch {
-        console.error("Token verification failed for both server and client secrets");
+        console.error(
+          "Token verification failed for both server and client secrets"
+        );
         return NextResponse.json({ error: "Invalid token" }, { status: 401 });
       }
     }
@@ -57,7 +59,10 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date(),
     });
 
-    console.log("[Telegram Chat] Running workflow for user", { userId, userTier });
+    console.log("[Telegram Chat] Running workflow for user", {
+      userId,
+      userTier,
+    });
 
     // Run micromanager workflow with user's message
     const workflowResult = await runWorkflow({
@@ -68,12 +73,16 @@ export async function POST(req: NextRequest) {
     });
 
     const response = workflowResult.output_text;
-    const hasError = 'error' in workflowResult && workflowResult.error === true;
+    const hasError = "error" in workflowResult && workflowResult.error === true;
 
     console.log("[Telegram Chat] Workflow completed", {
       userId,
       hasError,
-      responsePreview: response.length > 100 ? response.slice(0, 100) + "..." : response,
+      error: "error" in workflowResult && workflowResult.error,
+      errorMessage:
+        "errorMessage" in workflowResult && workflowResult.errorMessage,
+      responsePreview:
+        response.length > 100 ? response.slice(0, 100) + "..." : response,
     });
 
     // Store assistant response
