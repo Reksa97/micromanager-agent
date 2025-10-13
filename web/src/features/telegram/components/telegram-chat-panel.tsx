@@ -39,6 +39,11 @@ export function TelegramChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [latestToolCall, setLatestToolCall] = useState<{
+    displayTitle: string;
+    displayDescription?: string;
+    status: "pending" | "success" | "error";
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -197,6 +202,46 @@ export function TelegramChatPanel({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Poll for tool logs when workflow is active
+  useEffect(() => {
+    if (!isLoading) {
+      // Clear tool call when workflow finishes
+      setLatestToolCall(null);
+      return;
+    }
+
+    const pollToolLogs = async () => {
+      try {
+        const token = localStorage.getItem("telegram-token");
+        const response = await fetch("/api/user/tool-logs?latest=true&limit=1", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.logs && data.logs.length > 0) {
+            const latestLog = data.logs[0];
+            setLatestToolCall({
+              displayTitle: latestLog.displayTitle,
+              displayDescription: latestLog.displayDescription,
+              status: latestLog.status,
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch tool logs:", err);
+      }
+    };
+
+    // Poll immediately, then every 500ms
+    pollToolLogs();
+    const interval = setInterval(pollToolLogs, 500);
+
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   const retryLastMessage = useCallback(() => {
     // Find last user message and resubmit it
@@ -455,6 +500,7 @@ export function TelegramChatPanel({
             isWorkflowActive={isLoading}
             hasError={hasLastMessageError}
             onRetry={retryLastMessage}
+            latestToolCall={latestToolCall}
           />
           <DefaultConfigSquare />
         </div>
@@ -488,6 +534,11 @@ interface StatusTickerSectionProps {
   isWorkflowActive: boolean;
   hasError: boolean;
   onRetry: () => void;
+  latestToolCall: {
+    displayTitle: string;
+    displayDescription?: string;
+    status: "pending" | "success" | "error";
+  } | null;
 }
 
 function StatusTickerSection({
@@ -496,6 +547,7 @@ function StatusTickerSection({
   isWorkflowActive,
   hasError,
   onRetry,
+  latestToolCall,
 }: StatusTickerSectionProps) {
   return (
     <div className="relative overflow-hidden space-y-0">
@@ -541,6 +593,7 @@ function StatusTickerSection({
             text=""
             isToolsRow
             isAnimating={isWorkflowActive}
+            toolCall={latestToolCall}
           />
         </div>
       </div>
@@ -556,6 +609,11 @@ interface TickerRowProps {
   isAnimating?: boolean;
   hasError?: boolean;
   onRetry?: () => void;
+  toolCall?: {
+    displayTitle: string;
+    displayDescription?: string;
+    status: "pending" | "success" | "error";
+  } | null;
 }
 
 function TickerRow({
@@ -566,6 +624,7 @@ function TickerRow({
   isAnimating = false,
   hasError = false,
   onRetry,
+  toolCall,
 }: TickerRowProps) {
   return (
     <div className="flex flex-col gap-1 px-4 py-4">
@@ -575,7 +634,18 @@ function TickerRow({
         </span>
         {isToolsRow ? (
           <div className="flex items-center justify-center gap-2 flex-1 py-2">
-            {isAnimating ? (
+            {isAnimating && toolCall ? (
+              <div className="flex flex-col items-start gap-1 flex-1">
+                <span className="text-sm font-medium text-foreground/90">
+                  {toolCall.displayTitle}
+                </span>
+                {toolCall.displayDescription && (
+                  <span className="text-xs text-muted-foreground">
+                    {toolCall.displayDescription}
+                  </span>
+                )}
+              </div>
+            ) : isAnimating ? (
               <span className="inline-flex gap-1.5">
                 <span
                   className="h-2 w-2 rounded-full bg-purple-500 animate-pulse"

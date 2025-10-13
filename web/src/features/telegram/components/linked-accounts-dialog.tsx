@@ -146,10 +146,7 @@ export function LinkedAccountsDialog({
   const [accounts, setAccounts] = useState<LinkedAccount[]>([]);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [copied, setCopied] = useState(false);
-  const [notifSettings, setNotifSettings] = useState<NotificationSettings>({
-    enabled: false,
-    interval: "off",
-  });
+  const [notifSettings, setNotifSettings] = useState<NotificationSettings>();
   const [savingNotif, setSavingNotif] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [taskInfo, setTaskInfo] = useState<{
@@ -170,20 +167,21 @@ export function LinkedAccountsDialog({
     setLoading(true);
     try {
       const token = localStorage.getItem("telegram-token");
-      const [accountsRes, notifRes, statsRes, leaderboardRes] = await Promise.all([
-        fetch(`/api/user/linked-accounts`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`/api/user/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`/api/user/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`/api/leaderboard?limit=3`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
+      const [accountsRes, notifRes, statsRes, leaderboardRes] =
+        await Promise.all([
+          fetch(`/api/user/linked-accounts`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`/api/user/notifications`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`/api/user/stats`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`/api/leaderboard?limit=3`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
 
       if (accountsRes.ok) {
         const data = await accountsRes.json();
@@ -200,7 +198,8 @@ export function LinkedAccountsDialog({
           setTaskInfo({
             lastRunAt: data.lastRunAt,
             nextRunAt: data.nextRunAt,
-            timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+            timezone:
+              data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
           });
         } else {
           setTaskInfo(null);
@@ -303,7 +302,9 @@ export function LinkedAccountsDialog({
           setTaskInfo({
             lastRunAt: data.lastRunAt,
             nextRunAt: data.nextRunAt,
-            timezone: payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+            timezone:
+              payload.timezone ||
+              Intl.DateTimeFormat().resolvedOptions().timeZone,
           });
         } else {
           setTaskInfo(null);
@@ -322,7 +323,7 @@ export function LinkedAccountsDialog({
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
-          }).catch(err => console.debug("Trigger notification failed:", err));
+          }).catch((err) => console.debug("Trigger notification failed:", err));
         }
       } else {
         const data = await response.json();
@@ -392,48 +393,47 @@ export function LinkedAccountsDialog({
 
         <div className="space-y-4 pb-4">
           {/* Telegram User Info */}
-          {user && (
-            <div className="rounded-lg border bg-muted/50 p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
-                  <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="font-medium">Telegram User</p>
-                  <p className="text-sm text-muted-foreground">
-                    {user.name || "User"}
-                  </p>
+
+          <div className="rounded-lg border bg-muted/50 p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+                <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="font-medium">Telegram User</p>
+                <p className="text-sm text-muted-foreground">
+                  {user?.name || "User"}
+                </p>
+              </div>
+            </div>
+
+            {user?.telegramId && (
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Your Telegram ID (for linking)
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    value={user.telegramId}
+                    readOnly
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={handleCopyUserId}
+                    className="shrink-0"
+                  >
+                    {copied ? (
+                      <Check className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
-
-              {user.telegramId && (
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Your Telegram ID (for linking)
-                  </label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={user.telegramId}
-                      readOnly
-                      className="font-mono text-sm"
-                    />
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={handleCopyUserId}
-                      className="shrink-0"
-                    >
-                      {copied ? (
-                        <Check className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Google */}
           <div className="flex items-center justify-between rounded-lg border p-4">
@@ -475,111 +475,116 @@ export function LinkedAccountsDialog({
           </div>
 
           {/* Notification Settings */}
-          <div className="space-y-3 rounded-lg border p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900">
-                <Bell className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+          {notifSettings && (
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900">
+                  <Bell className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <p className="font-medium">Proactive Messages</p>
+                  <p className="text-sm text-muted-foreground">
+                    {notifSettings.interval === "off"
+                      ? "Disabled"
+                      : `Active: ${
+                          intervalOptions.find(
+                            (o) => o.value === notifSettings.interval
+                          )?.label
+                        }`}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="font-medium">Proactive Messages</p>
-                <p className="text-sm text-muted-foreground">
-                  {notifSettings.interval === "off"
-                    ? "Disabled"
-                    : `Active: ${
-                        intervalOptions.find(
-                          (o) => o.value === notifSettings.interval
-                        )?.label
-                      }`}
-                </p>
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="notification-interval">
-                Message Frequency
-                {savingNotif && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    Saving...
-                  </span>
+              <div className="space-y-2">
+                <Label htmlFor="notification-interval">
+                  Message Frequency
+                  {savingNotif && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      Saving...
+                    </span>
+                  )}
+                  {showSaveSuccess && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-600 animate-in fade-in">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Saved!
+                    </span>
+                  )}
+                </Label>
+                <Select
+                  value={notifSettings.interval}
+                  onValueChange={(value) => {
+                    const newInterval = value as NotificationInterval;
+                    setNotifSettings({
+                      ...notifSettings,
+                      interval: newInterval,
+                      enabled: newInterval !== "off",
+                    });
+                    handleSaveNotifications(newInterval);
+                  }}
+                  disabled={savingNotif}
+                >
+                  <SelectTrigger id="notification-interval">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {intervalOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {userTier === "free" && (
+                  <p className="text-xs text-muted-foreground">
+                    💎 Upgrade to paid for more frequent messages (15min+)
+                  </p>
                 )}
-                {showSaveSuccess && (
-                  <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-600 animate-in fade-in">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Saved!
-                  </span>
-                )}
-              </Label>
-              <Select
-                value={notifSettings.interval}
-                onValueChange={(value) => {
-                  const newInterval = value as NotificationInterval;
-                  setNotifSettings({
-                    ...notifSettings,
-                    interval: newInterval,
-                    enabled: newInterval !== "off",
-                  });
-                  handleSaveNotifications(newInterval);
-                }}
-                disabled={savingNotif}
-              >
-                <SelectTrigger id="notification-interval">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {intervalOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {userTier === "free" && (
-                <p className="text-xs text-muted-foreground">
-                  💎 Upgrade to paid for more frequent messages (15min+)
-                </p>
+              </div>
+
+              {/* Timestamp Information - only show after user has changed settings */}
+              {hasChangedNotif && taskInfo && (
+                <div className="space-y-2 rounded-md bg-muted p-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Timezone:</span>
+                    <span className="font-medium">{taskInfo.timezone}</span>
+                  </div>
+                  {taskInfo.lastRunAt && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Last Run:</span>
+                      <span className="font-medium">
+                        {new Date(taskInfo.lastRunAt).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {taskInfo.nextRunAt && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Next Run:</span>
+                        <span className="font-medium">
+                          {new Date(taskInfo.nextRunAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">
+                          Time Until:
+                        </span>
+                        <span className="font-medium">
+                          {formatTimeUntil(taskInfo.nextRunAt)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {notifSettings.interval === "daily" && notifSettings.enabled && (
+                <div className="rounded-md bg-blue-50 dark:bg-blue-950 p-3 text-xs text-blue-900 dark:text-blue-100">
+                  Daily messages will be sent at approximately the same time
+                  each day
+                </div>
               )}
             </div>
-
-            {/* Timestamp Information - only show after user has changed settings */}
-            {hasChangedNotif && taskInfo && (
-              <div className="space-y-2 rounded-md bg-muted p-3 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Timezone:</span>
-                  <span className="font-medium">{taskInfo.timezone}</span>
-                </div>
-                {taskInfo.lastRunAt && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Last Run:</span>
-                    <span className="font-medium">
-                      {new Date(taskInfo.lastRunAt).toLocaleString()}
-                    </span>
-                  </div>
-                )}
-                {taskInfo.nextRunAt && (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Next Run:</span>
-                      <span className="font-medium">
-                        {new Date(taskInfo.nextRunAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Time Until:</span>
-                      <span className="font-medium">
-                        {formatTimeUntil(taskInfo.nextRunAt)}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {notifSettings.interval === "daily" && notifSettings.enabled && (
-              <div className="rounded-md bg-blue-50 dark:bg-blue-950 p-3 text-xs text-blue-900 dark:text-blue-100">
-                Daily messages will be sent at approximately the same time each day
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Stats Section */}
           {stats && (
@@ -599,7 +604,9 @@ export function LinkedAccountsDialog({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="rounded-md bg-muted p-3 text-center">
                   <p className="text-2xl font-bold">{stats.totalRequests}</p>
-                  <p className="text-xs text-muted-foreground">Total Requests</p>
+                  <p className="text-xs text-muted-foreground">
+                    Total Requests
+                  </p>
                 </div>
                 <div className="rounded-md bg-muted p-3 text-center">
                   <p className="text-2xl font-bold">
@@ -617,7 +624,9 @@ export function LinkedAccountsDialog({
                   >
                     {stats.failedRequests}
                   </p>
-                  <p className="text-xs text-muted-foreground">Failed Requests</p>
+                  <p className="text-xs text-muted-foreground">
+                    Failed Requests
+                  </p>
                 </div>
               </div>
 
@@ -647,13 +656,17 @@ export function LinkedAccountsDialog({
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Failed This Week:</span>
+                  <span className="text-muted-foreground">
+                    Failed This Week:
+                  </span>
                   <span className="font-medium">
                     {stats.thisWeek.failedRequests}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Failed This Month:</span>
+                  <span className="text-muted-foreground">
+                    Failed This Month:
+                  </span>
                   <span className="font-medium">
                     {stats.thisMonth.failedRequests}
                   </span>
@@ -664,7 +677,9 @@ export function LinkedAccountsDialog({
                 <div className="flex items-center justify-between gap-3">
                   <Badge
                     variant={
-                      stats.today.failedRequests > 0 ? "destructive" : "secondary"
+                      stats.today.failedRequests > 0
+                        ? "destructive"
+                        : "secondary"
                     }
                   >
                     Failed runs today: {stats.today.failedRequests}
@@ -690,7 +705,10 @@ export function LinkedAccountsDialog({
                     {stats.recentErrors.map((entry, index) => {
                       const timestamp = new Date(entry.createdAt);
                       return (
-                        <div key={`${entry.createdAt}-${index}`} className="space-y-1">
+                        <div
+                          key={`${entry.createdAt}-${index}`}
+                          className="space-y-1"
+                        >
                           <div className="flex items-center justify-between">
                             <span className="font-semibold text-destructive">
                               {formatTaskTypeLabel(entry.taskType)}
