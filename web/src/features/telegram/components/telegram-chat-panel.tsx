@@ -39,11 +39,12 @@ export function TelegramChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [latestToolCall, setLatestToolCall] = useState<{
+  const [toolCallHistory, setToolCallHistory] = useState<Array<{
     displayTitle: string;
     displayDescription?: string;
     status: "pending" | "success" | "error";
-  } | null>(null);
+    createdAt: string;
+  }>>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -206,15 +207,15 @@ export function TelegramChatPanel({
   // Poll for tool logs when workflow is active
   useEffect(() => {
     if (!isLoading) {
-      // Clear tool call when workflow finishes
-      setLatestToolCall(null);
+      // Clear tool call history when workflow finishes
+      setToolCallHistory([]);
       return;
     }
 
     const pollToolLogs = async () => {
       try {
         const token = localStorage.getItem("telegram-token");
-        const response = await fetch("/api/user/tool-logs?latest=true&limit=1", {
+        const response = await fetch("/api/user/tool-logs?latest=true", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -223,12 +224,19 @@ export function TelegramChatPanel({
         if (response.ok) {
           const data = await response.json();
           if (data.logs && data.logs.length > 0) {
-            const latestLog = data.logs[0];
-            setLatestToolCall({
-              displayTitle: latestLog.displayTitle,
-              displayDescription: latestLog.displayDescription,
-              status: latestLog.status,
-            });
+            // Sort by createdAt descending (newest first)
+            const sortedLogs = [...data.logs].sort((a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+
+            setToolCallHistory(
+              sortedLogs.map((log) => ({
+                displayTitle: log.displayTitle,
+                displayDescription: log.displayDescription,
+                status: log.status,
+                createdAt: log.createdAt,
+              }))
+            );
           }
         }
       } catch (err) {
@@ -495,12 +503,12 @@ export function TelegramChatPanel({
           <StatusTickerSection
             userText={lastUserMessage ?? DEFAULT_TICKER_CONTENT.user}
             assistantText={
-              lastAssistantMessage ?? DEFAULT_TICKER_CONTENT.assistant
+              isLoading ? "" : (lastAssistantMessage ?? DEFAULT_TICKER_CONTENT.assistant)
             }
             isWorkflowActive={isLoading}
             hasError={hasLastMessageError}
             onRetry={retryLastMessage}
-            latestToolCall={latestToolCall}
+            toolCallHistory={toolCallHistory}
           />
           <DefaultConfigSquare />
         </div>
@@ -534,11 +542,12 @@ interface StatusTickerSectionProps {
   isWorkflowActive: boolean;
   hasError: boolean;
   onRetry: () => void;
-  latestToolCall: {
+  toolCallHistory: Array<{
     displayTitle: string;
     displayDescription?: string;
     status: "pending" | "success" | "error";
-  } | null;
+    createdAt: string;
+  }>;
 }
 
 function StatusTickerSection({
@@ -547,7 +556,7 @@ function StatusTickerSection({
   isWorkflowActive,
   hasError,
   onRetry,
-  latestToolCall,
+  toolCallHistory,
 }: StatusTickerSectionProps) {
   return (
     <div className="relative overflow-hidden space-y-0">
@@ -593,7 +602,7 @@ function StatusTickerSection({
             text=""
             isToolsRow
             isAnimating={isWorkflowActive}
-            toolCall={latestToolCall}
+            toolCallHistory={toolCallHistory}
           />
         </div>
       </div>
@@ -609,11 +618,12 @@ interface TickerRowProps {
   isAnimating?: boolean;
   hasError?: boolean;
   onRetry?: () => void;
-  toolCall?: {
+  toolCallHistory?: Array<{
     displayTitle: string;
     displayDescription?: string;
     status: "pending" | "success" | "error";
-  } | null;
+    createdAt: string;
+  }>;
 }
 
 function TickerRow({
@@ -624,8 +634,22 @@ function TickerRow({
   isAnimating = false,
   hasError = false,
   onRetry,
-  toolCall,
+  toolCallHistory = [],
 }: TickerRowProps) {
+  const getStatusIcon = (status: "pending" | "success" | "error") => {
+    if (status === "pending") return "⏳";
+    if (status === "success") return "✓";
+    if (status === "error") return "✗";
+    return "";
+  };
+
+  const getStatusColor = (status: "pending" | "success" | "error") => {
+    if (status === "pending") return "text-yellow-500";
+    if (status === "success") return "text-green-500";
+    if (status === "error") return "text-red-500";
+    return "";
+  };
+
   return (
     <div className="flex flex-col gap-1 px-4 py-4">
       <div className="flex flex-row items-center gap-4">
@@ -633,17 +657,22 @@ function TickerRow({
           {label}
         </span>
         {isToolsRow ? (
-          <div className="flex items-center justify-center gap-2 flex-1 py-2">
-            {isAnimating && toolCall ? (
-              <div className="flex flex-col items-start gap-1 flex-1">
-                <span className="text-sm font-medium text-foreground/90">
-                  {toolCall.displayTitle}
-                </span>
-                {toolCall.displayDescription && (
-                  <span className="text-xs text-muted-foreground">
-                    {toolCall.displayDescription}
-                  </span>
-                )}
+          <div className="flex items-center gap-2 flex-1 py-2 overflow-x-auto">
+            {isAnimating && toolCallHistory.length > 0 ? (
+              <div className="flex flex-row gap-2 flex-nowrap">
+                {toolCallHistory.map((tool, index) => (
+                  <div
+                    key={`${tool.createdAt}-${index}`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-background/60 border border-border/40 shrink-0"
+                  >
+                    <span className="text-xs font-medium text-foreground/90 whitespace-nowrap">
+                      {tool.displayTitle}
+                    </span>
+                    <span className={cn("text-sm", getStatusColor(tool.status))}>
+                      {getStatusIcon(tool.status)}
+                    </span>
+                  </div>
+                ))}
               </div>
             ) : isAnimating ? (
               <span className="inline-flex gap-1.5">
@@ -682,26 +711,61 @@ function TickerRow({
           </div>
         ) : (
           <div className="flex items-center gap-2 flex-1">
-            <span
-              className={cn(
-                "text-sm leading-relaxed font-normal text-foreground/90 flex-1",
-                isAnimating && "opacity-60 animate-pulse",
-                hasError && "text-red-500/90",
-                className
-              )}
-            >
-              {text}
-            </span>
-            {hasError && onRetry && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={onRetry}
-                className="gap-1.5 h-7 text-xs"
-              >
-                <RefreshCw className="h-3 w-3" />
-                Retry
-              </Button>
+            {isAnimating && !text ? (
+              <span className="inline-flex gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full bg-primary/70 animate-pulse"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-accent/70 animate-pulse"
+                  style={{ animationDelay: "100ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-secondary/70 animate-pulse"
+                  style={{ animationDelay: "200ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-primary/70 animate-pulse"
+                  style={{ animationDelay: "300ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-accent/70 animate-pulse"
+                  style={{ animationDelay: "400ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-secondary/70 animate-pulse"
+                  style={{ animationDelay: "500ms" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-primary/70 animate-pulse"
+                  style={{ animationDelay: "600ms" }}
+                />
+              </span>
+            ) : (
+              <>
+                <span
+                  className={cn(
+                    "text-sm leading-relaxed font-normal text-foreground/90 flex-1",
+                    isAnimating && "opacity-60 animate-pulse",
+                    hasError && "text-red-500/90",
+                    className
+                  )}
+                >
+                  {text}
+                </span>
+                {hasError && onRetry && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={onRetry}
+                    className="gap-1.5 h-7 text-xs"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Retry
+                  </Button>
+                )}
+              </>
             )}
           </div>
         )}
