@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { env } from "@/env";
-import { getUserTasks, scheduleDailyCheck, deleteScheduledTask, createScheduledTask } from "@/lib/scheduled-tasks";
+import { getUserTasks, deleteScheduledTask, createScheduledTask } from "@/lib/scheduled-tasks";
 import { getUserById } from "@/lib/user";
-import { getMongoClient } from "@/lib/db";
 
 export type NotificationInterval = "15min" | "30min" | "1h" | "2h" | "4h" | "daily" | "off";
 
@@ -61,11 +60,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const settings: NotificationSettings = {
+    const settings = {
       enabled: true,
       interval,
       timezone: dailyCheckTask.payload?.timezone as string | undefined,
       dailyHour: dailyCheckTask.payload?.hour as number | undefined,
+      lastRunAt: dailyCheckTask.lastRunAt?.toISOString(),
+      nextRunAt: dailyCheckTask.nextRunAt?.toISOString(),
     };
 
     return NextResponse.json(settings);
@@ -185,7 +186,7 @@ export async function POST(req: NextRequest) {
       nextRunAt = new Date(Date.now() + intervalMs);
     }
 
-    await createScheduledTask({
+    const newTask = await createScheduledTask({
       userId,
       taskType: "daily_check",
       nextRunAt,
@@ -199,6 +200,8 @@ export async function POST(req: NextRequest) {
       success: true,
       message: "Notification settings updated",
       nextRunAt: nextRunAt.toISOString(),
+      lastRunAt: newTask.lastRunAt?.toISOString(),
+      timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   } catch (error) {
     console.error("Error updating notification settings:", error);

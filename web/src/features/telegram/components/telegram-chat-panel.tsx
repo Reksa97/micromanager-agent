@@ -489,16 +489,16 @@ function TickerRow({
 }: TickerRowProps) {
   return (
     <div className="flex flex-col gap-1 px-4 py-4">
-      <span
-        className={`text-[10px] min-h-4 font-semibold uppercase tracking-widest flex flex-row text-muted-foreground/80 ${className} ${
-          direction === "reverse"
-            ? "animate-slide-right justify-between"
-            : "animate-slide-left gap-4"
-        }`}
-      >
-        <div className={`mr-4`}>{label}</div>
-        <div>{text}</div>
-      </span>
+      <div className="flex flex-row items-start gap-4">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 shrink-0">
+          {label}
+        </span>
+        <span
+          className={`text-sm leading-relaxed font-normal text-foreground/90 ${className}`}
+        >
+          {text}
+        </span>
+      </div>
     </div>
   );
 }

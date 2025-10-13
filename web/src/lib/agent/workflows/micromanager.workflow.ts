@@ -1,7 +1,8 @@
 import { hostedMcpTool, Agent, AgentInputItem, Runner } from "@openai/agents";
 import { getHostedMcpParams } from "./helpers";
+import { logUsage, calculateCost } from "@/lib/usage-tracking";
 
-type WorkflowInput = { input_as_text: string; user_id: string };
+type WorkflowInput = { input_as_text: string; user_id: string; source?: "telegram" | "web" | "api" };
 
 // Main code entrypoint
 export const runWorkflow = async (workflow: WorkflowInput) => {
@@ -70,5 +71,56 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
   const micromanagerResult = {
     output_text: micromanagerResultTemp.finalOutput ?? "",
   };
+
+  // Log usage for tracking
+  try {
+    // Extract usage from result - try to get from providerData or estimate
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resultAny = micromanagerResultTemp as any;
+    const usage = resultAny.usage || {};
+
+    // Estimate tokens if not available
+    const inputTokens = usage.input_tokens || Math.ceil(workflow.input_as_text.length / 4);
+    const outputTokens = usage.output_tokens || Math.ceil((micromanagerResultTemp.finalOutput?.length || 0) / 4);
+    const totalTokens = inputTokens + outputTokens;
+
+    const cost = calculateCost({
+      inputTokens,
+      outputTokens,
+      model: "gpt-5-0925",
+    });
+
+    // Count tool calls from newItems
+    const toolCalls = micromanagerResultTemp.newItems.filter(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      item => (item.rawItem as any).type === "hosted_tool_call"
+    ).length;
+
+    // Extract tool names from hosted_tool_call items
+    const toolNames = micromanagerResultTemp.newItems
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter(item => (item.rawItem as any).type === "hosted_tool_call")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map(item => (item.rawItem as any).name || "unknown")
+      .filter((name, index, arr) => arr.indexOf(name) === index); // unique
+
+    await logUsage({
+      userId: workflow.user_id,
+      taskType: "workflow",
+      source: workflow.source || "api",
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      ...cost,
+      toolCalls,
+      toolNames,
+      model: "gpt-5-0925",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Failed to log usage:", error);
+    // Don't fail the workflow if logging fails
+  }
+
   return micromanagerResult;
 };
