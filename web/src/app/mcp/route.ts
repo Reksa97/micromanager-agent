@@ -7,7 +7,10 @@ import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { z } from "zod";
-import { ToolRegistry, ToolSchemas } from "@cocal/google-calendar-mcp/src/tools/registry"
+import {
+  ToolRegistry,
+  ToolSchemas,
+} from "@cocal/google-calendar-mcp/src/tools/registry";
 import { ListCalendarsHandler } from "@cocal/google-calendar-mcp/src/handlers/core/ListCalendarsHandler";
 import { ListEventsHandler } from "@cocal/google-calendar-mcp/src/handlers/core/ListEventsHandler";
 import { SearchEventsHandler } from "@cocal/google-calendar-mcp/src/handlers/core/SearchEventsHandler";
@@ -20,6 +23,7 @@ import { FreeBusyEventHandler } from "@cocal/google-calendar-mcp/src/handlers/co
 import { GetCurrentTimeHandler } from "@cocal/google-calendar-mcp/src/handlers/core/GetCurrentTimeHandler";
 import { env } from "@/env";
 import { OAuth2Client } from "@cocal/google-calendar-mcp/node_modules/google-auth-library";
+import { verifyMcpToken } from "@/lib/mcp-auth";
 
 const formatMcpResponse = (response: string): CallToolResult => ({
   content: [{ type: "text", text: response }],
@@ -35,8 +39,8 @@ const calendarToolHandlers = {
   "update-event": UpdateEventHandler,
   "delete-event": DeleteEventHandler,
   "get-freebusy": FreeBusyEventHandler,
-  "get-current-time": GetCurrentTimeHandler
-}
+  "get-current-time": GetCurrentTimeHandler,
+};
 
 // StreamableHttp server
 const handler = createMcpHandler(
@@ -136,34 +140,34 @@ const handler = createMcpHandler(
         }
       }
     );
-    
-    ToolRegistry.getToolsWithSchemas().forEach(tool => {
+
+    ToolRegistry.getToolsWithSchemas().forEach((tool) => {
       server.registerTool(
-        tool.name, 
+        tool.name,
         {
           description: tool.description,
           inputSchema: ToolRegistry.extractSchemaShape(ToolSchemas[tool.name]),
         },
-        async (args, extra) => { 
+        async (args, extra) => {
           try {
             const oAuth2Client = new OAuth2Client({
               clientId: env.GOOGLE_CLIENT_ID,
-              clientSecret: env.GOOGLE_CLIENT_SECRET
+              clientSecret: env.GOOGLE_CLIENT_SECRET,
             });
 
-            const googleAccessToken = extra?.authInfo?.extra?.googleAccessToken
+            const googleAccessToken = extra?.authInfo?.extra?.googleAccessToken;
 
             if (!googleAccessToken || typeof googleAccessToken !== "string") {
-              console.log("Missing google access token")
+              console.log("Missing google access token");
               return formatMcpResponse("Missing Google access token");
             }
-            
 
             oAuth2Client.setCredentials({ access_token: googleAccessToken });
-            const result = await new calendarToolHandlers[tool.name]().runTool(args, oAuth2Client)
-            return formatMcpResponse(
-              JSON.stringify(result, null, 2)
-            )
+            const result = await new calendarToolHandlers[tool.name]().runTool(
+              args,
+              oAuth2Client
+            );
+            return formatMcpResponse(JSON.stringify(result, null, 2));
           } catch (error) {
             console.error("Failed ", error);
             return formatMcpResponse(
@@ -173,8 +177,8 @@ const handler = createMcpHandler(
             );
           }
         }
-    )
-    })
+      );
+    });
   },
   {
     capabilities: {
@@ -185,9 +189,10 @@ const handler = createMcpHandler(
         update_user_context: {
           description: "Update the user context",
         },
-        ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => ({...rest,
-          [tool.name.replace('-', '_')]: { description: tool.description }
-        }))
+        ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => ({
+          ...rest,
+          [tool.name.replace("-", "_")]: { description: tool.description },
+        })),
       },
     },
   },
@@ -200,41 +205,71 @@ const handler = createMcpHandler(
 );
 
 const verifyToken = async (
-  req: Request,
+  _req: Request,
   bearerToken?: string
 ): Promise<AuthInfo | undefined> => {
+  console.log("[MCP Auth] Received request with token:", {
+    hasBearerToken: !!bearerToken,
+    tokenPreview: bearerToken ? bearerToken.substring(0, 20) + "..." : "none",
+  });
+
   if (!bearerToken) {
-    console.error("Bearer token is required", { headers: req.headers });
+    console.error("Bearer token is required");
     return undefined;
   }
 
-  const userId = req.headers.get("user-id");
-  if (!userId) {
-    // TODO don't log sensitive information
-    console.error("User ID is required", { headers: req.headers });
+  // Check for development API key (never expires, hardcoded test user)
+  const devApiKey = env.MCP_DEVELOPMENT_API_KEY;
+  if (devApiKey && bearerToken === devApiKey) {
+    const testUserId = process.env.MCP_DEV_TEST_USER_ID || "999000000";
+    console.log(
+      "[MCP Dev Auth] Using development API key with test user:",
+      testUserId
+    );
+
+    // Fetch Google token from DB with auto-refresh
+    const { getGoogleAccessToken } = await import("@/lib/google-tokens");
+    let googleAccessToken = await getGoogleAccessToken(testUserId);
+
+    // Fallback to env var if no DB token
+    if (!googleAccessToken) {
+      console.log("[MCP Dev Auth] No DB token, falling back to env var");
+      googleAccessToken =
+        process.env.PERSONAL_GOOGLE_ACCESS_TOKEN_FOR_TESTING ?? null;
+    } else {
+      console.log("[MCP Dev Auth] Using DB token (auto-refreshed if needed)");
+    }
+
+    return {
+      token: bearerToken,
+      scopes: ["read:user-context", "write:user-context"],
+      clientId: testUserId,
+      extra: {
+        googleAccessToken: googleAccessToken,
+      },
+    };
+  }
+
+  // Verify the MCP token and extract user info
+  const payload = await verifyMcpToken(bearerToken);
+
+  if (!payload) {
+    console.error("Invalid or expired MCP token");
     return undefined;
   }
 
-  const googleAccessToken = req.headers.get("google-access-token");
-  if (!googleAccessToken) {
-    // TODO don't log sensitive information
-    console.error("Google access token is required", { headers: req.headers });
-    return undefined;
-  }
+  console.log("[MCP Auth] Verified token", {
+    userId: payload.userId,
+    googleAccessToken: payload.googleAccessToken?.substring(0, 20) + "...",
+    hasGoogleAccessToken: !!payload.googleAccessToken,
+  });
 
-  const isValid = bearerToken.startsWith("__TEST_VALUE__");
-  if (!isValid) {
-    // TODO don't log sensitive information
-    console.error("Invalid bearer token", { bearerToken });
-    return undefined;
-  }
   return {
     token: bearerToken,
     scopes: ["read:user-context", "write:user-context"],
-    clientId: userId,
+    clientId: payload.userId,
     extra: {
-      // Optional extra information
-      googleAccessToken: googleAccessToken,
+      googleAccessToken: payload.googleAccessToken,
     },
   };
 };
@@ -245,4 +280,9 @@ const authHandler = withMcpAuth(handler, verifyToken, {
   resourceMetadataPath: "/.well-known/oauth-protected-resource",
 });
 
-export { authHandler as GET, authHandler as POST, authHandler as DELETE, authHandler as OPTIONS };
+export {
+  authHandler as GET,
+  authHandler as POST,
+  authHandler as DELETE,
+  authHandler as OPTIONS,
+};

@@ -1,112 +1,99 @@
-# Micromanager Agent - Development Guide
+# Micromanager Agent - Dev Guide
 
-## Critical: Always Test Before Deploying
-
+## CRITICAL: Test Before Deploy
 ```bash
-cd web && npm run build  # MUST pass before pushing
-cd web && npm run lint   # Fix linting errors
+cd web && npm run build  # MUST pass
+cd web && npm run test   # Run Playwright E2E tests
 ```
 
-## Project Structure
+## Stack
+- **Framework**: Next.js 15.5.3 (App Router)
+- **Database**: MongoDB Atlas (`MONGODB_URI`)
+- **Auth**: JWT (Telegram), NextAuth (web)
+- **AI**: Micromanager workflow (`src/lib/agent/workflows/micromanager.workflow.ts`)
+- **Telegram**: Grammy bot + Mini Apps SDK
 
-- **Framework**: Next.js 15.5.3 with App Router
-- **Database**: MongoDB Atlas (use MONGODB_URI, not DATABASE_URL)
-- **Auth**: NextAuth.js (web), JWT (Telegram)
-- **AI**: OpenAI GPT models
-- **Telegram**: Grammy bot, Telegram Mini Apps SDK
-
-## Essential Commands
-
+## Commands
 ```bash
-npm run dev         # Start dev server (port 3000)
-npm run build       # Build for production (MUST test before push)
-npm run lint        # Run ESLint
-npm run test        # Run tests
+npm run dev     # Port 3000
+npm run build   # Test before push!
+npm run test    # Playwright E2E
+npm run lint    # Fix errors
 ```
 
-## Environment Variables (Required for Vercel)
-
+## Required Env Vars
 ```
-MONGODB_URI=mongodb+srv://...    # MongoDB Atlas connection
-AUTH_SECRET=...                  # Random secret for JWT
-OPENAI_API_KEY=sk-proj-...       # OpenAI API key
-TELEGRAM_BOT_TOKEN=...           # From @BotFather
-ALLOW_USER_REGISTRATION=true     # Enable signups
+MONGODB_URI=mongodb+srv://...
+AUTH_SECRET=...                    # JWT secret
+OPENAI_API_KEY=sk-proj-...         # For workflow
+TELEGRAM_BOT_TOKEN=...             # From @BotFather
+TELEGRAM_DEV_MOCK_SECRET=dev-secret  # For E2E tests
+NEXT_PUBLIC_MICROMANAGER_MCP_SERVER_URL=https://your-mcp.vercel.app
 ```
 
 ## User Management
-
-### MongoDB Direct Updates
-
-```javascript
-// Set user as system admin with paid tier:
-{
-  isSystemAdmin: true,
-  tier: "paid",         // "free" | "paid" | "enterprise"
-  role: "admin"         // "user" | "admin"
-}
+Set admin in MongoDB:
+```js
+{ isSystemAdmin: true, tier: "paid", role: "admin" }
 ```
 
-### Access Points
+Access: `/admin` (system admin), `/telegram` (Telegram Mini App)
 
-- `/admin` - System admin dashboard (requires isSystemAdmin: true)
-- `/telegram` - Telegram Mini App login
-- `/telegram-app` - Authenticated Telegram interface
+## Key Features
 
-## API Endpoints
+### 1. Micromanager Workflow
+- **File**: `src/lib/agent/workflows/micromanager.workflow.ts`
+- **First-load**: Sends greeting via `/api/workflow/first-load-greeting`
+- **Messages**: All user messages → workflow → MCP tools (calendar, context)
+- **Input**: `{ input_as_text: string, user_id: string }`
+- **Output**: `{ output_text: string }`
 
-- `POST /api/auth/telegram` - Telegram authentication
-- `GET /api/user/profile` - User profile and usage
-- `POST /api/telegram/chat` - Telegram chat messages
-- `GET /api/admin/users` - Admin: list all users
-- `PATCH /api/admin/users` - Admin: update user
+### 2. First-Load Experience
+- MongoDB-backed progress tracking
+- 4 steps: "Getting to know you..." → "Preparing..." → "Setting up..." → "Almost ready..."
+- Shows once per user (`hasCompletedFirstLoad` flag)
+- Frontend polls `/api/first-load/status` every 500ms
+- Backend runs `/api/first-load/init` (MUST await!)
 
-## Common Issues & Solutions
+### 3. Google Calendar Integration
+- Link account via `/api/auth/google/link`
+- MCP tools: list/search/create/update/delete events
+- Tokens auto-refresh in `src/lib/google-tokens.ts`
 
-### MongoDB SSL Error on Vercel
+## Common Gotchas
 
-- Error: `SSL routines:ssl3_read_bytes:tlsv1 alert internal error`
-- Solution: Fixed in `/src/lib/db.ts` with proper connection pooling
+### Serverless MUST Await
+❌ `runTask(userId).catch(...)` → **Task killed!**
+✅ `await runTask(userId)` → **Task completes**
 
-### Build Failures
+Serverless functions terminate after response. Always await async work.
 
-- Always run `npm run build` locally before pushing
-- Check for TypeScript errors and unused imports
-- Verify all imports exist (no untracked files)
+### First-Load Stuck
+- **Fix**: Ensure `await runFirstLoadTasks(userId)` in `/api/first-load/init`
+- **Test**: Use `/api/dev/reset-progress` (paid users in prod)
 
-## Message Source Tags
+### MongoDB Query Bug
+- JWT `sub` = MongoDB `_id` (ObjectId string)
+- Use `new ObjectId(userId)`, NOT `parseInt(userId)`
 
-- `web-user` - Web interface messages
-- `telegram-user` - Telegram messages
-- `micromanager` - AI responses
-- `realtime-agent` - Voice agent
-
-## Development Workflow
-
+## Dev Workflow
 1. Make changes
-2. Run `npm run build` - MUST PASS
-3. Test locally
-4. Commit with descriptive message
-5. Push to main (auto-deploys to Vercel)
+2. `npm run build` (MUST pass)
+3. `npm run test` (Playwright E2E)
+4. Commit & push to `dev`
+5. **Wait** for deployment
+6. **Test in production**
+7. Confirm working before announcing
 
-## Telegram Bot Setup
+**Never announce "production ready" without testing in production!**
 
-1. Create bot with @BotFather
-2. Set webhook: `https://your-app.vercel.app/api/telegram/webhook`
-3. Set Mini App URL: `https://your-app.vercel.app/telegram`
+## Telegram Setup
+1. Create bot: @BotFather
+2. Webhook: `https://your-app.vercel.app/api/telegram/webhook`
+3. Mini App URL: `https://your-app.vercel.app/telegram`
 
-## File Locations
-
-- `/src/app/admin/*` - Admin UI
-- `/src/app/telegram/*` - Telegram Mini App
-- `/src/lib/telegram/bot.ts` - Bot logic
-- `/src/types/user.ts` - User types
-- `/src/lib/db.ts` - MongoDB connection
-
-## Testing Checklist
-
-- [ ] Build passes: `npm run build`
-- [ ] No TypeScript errors
-- [ ] All imports exist
-- [ ] Environment variables set on Vercel
-- [ ] MongoDB connection works
+## Testing
+- E2E tests: `__tests__/e2e/*.spec.ts`
+- Mock auth: `?mock_secret=dev-secret&mock_user_id=888000001`
+- Tests reset user data before each run
+- Unique test IDs: 888000001, 888000002, 888000003

@@ -9,6 +9,7 @@ const serverSchema = z.object({
   OPENAI_PROJECT: z.string().optional(),
   ALLOW_USER_REGISTRATION: z.boolean(),
   TELEGRAM_DEV_MOCK_SECRET: z.string().optional(),
+  MCP_DEVELOPMENT_API_KEY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 });
@@ -52,6 +53,7 @@ export const env = serverSchema.parse({
   OPENAI_PROJECT: process.env.OPENAI_PROJECT,
   ALLOW_USER_REGISTRATION: allowUserRegistration,
   TELEGRAM_DEV_MOCK_SECRET: process.env.TELEGRAM_DEV_MOCK_SECRET,
+  MCP_DEVELOPMENT_API_KEY: process.env.MCP_DEVELOPMENT_API_KEY,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   TELEGRAM_SERVER_SECRET: process.env.TELEGRAM_SERVER_SECRET,

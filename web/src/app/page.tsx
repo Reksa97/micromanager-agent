@@ -77,7 +77,7 @@ export default async function Home() {
         </div>
       </header>
 
-      <ChatPanel userId={session.user.id} />
+      <ChatPanel />
       <WorkPlanPanel />
     </main>
   );

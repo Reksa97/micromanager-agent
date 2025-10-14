@@ -1,17 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import { insertMessage, getRecentMessages } from "@/lib/conversations";
+import { insertMessage } from "@/lib/conversations";
 import { env } from "@/env";
-import { MODELS } from "@/lib/utils";
-import { OpenAIAgent, runOpenAIAgent } from "@/lib/openai";
-import {
-  formatMicromanagerChatPrompt,
-  MICROMANAGER_CHAT_SYSTEM_PROMPT,
-} from "@/lib/agent/prompts";
-import { getUserContextDocument } from "@/lib/user-context";
-import { getBackendTools } from "@/lib/agent/tools.server";
 import { getUserById } from "@/lib/user";
 import { verifyTelegramServerToken } from "@/lib/telegram/auth";
+import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,13 +13,25 @@ export async function POST(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    
-    if (!(await verifyTelegramServerToken(token))) {
+
+    // Try verifying with TELEGRAM_SERVER_SECRET first (for server-to-server calls)
+    // If that fails, fall back to JWT_SECRET (for client tokens)
+    let isValid = false;
+    try {
+      isValid = await verifyTelegramServerToken(token);
+    } catch {
+      // Server token verification failed, try client token
       try {
         await jwtVerify(token, env.JWT_SECRET);
+        isValid = true;
       } catch {
+        console.error("Token verification failed for both server and client secrets");
         return NextResponse.json({ error: "Invalid token" }, { status: 401 });
       }
+    }
+
+    if (!isValid) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
     const { message, userId } = await req.json();
@@ -52,41 +57,19 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date(),
     });
 
-    const [userMessageHistory, userContextDoc] = await Promise.all([
-      getRecentMessages(userId, 3),
-      getUserContextDocument(userId),
-    ]);
+    console.log("[Telegram Chat] Running workflow for user", { userId, userTier });
 
-    const model = userTier === "paid" ? MODELS.text : MODELS.textBudget;
-    const tools = getBackendTools(userId, undefined);
-
-    console.log("Calling agent", { userId, userTier, model });
-
-    const agent = new OpenAIAgent({
-      name: "micromanager",
-      instructions: MICROMANAGER_CHAT_SYSTEM_PROMPT,
-      model,
-      tools,
+    // Run micromanager workflow with user's message
+    const workflowResult = await runWorkflow({
+      input_as_text: message,
+      user_id: userId,
     });
 
-    const micromanagerAgentPrompt = formatMicromanagerChatPrompt({
-      userContextDoc: userContextDoc,
-      userMessageHistory: userMessageHistory,
-      userMessage: message,
-    });
+    const response = workflowResult.output_text;
 
-    const agentResult = await runOpenAIAgent(agent, micromanagerAgentPrompt);
-
-    const response = agentResult.finalOutput ?? "No final output from agent";
-
-    console.log("Telegram Agent result", {
-      model,
-      micromanagerAgentPrompt,
-      response:
-        response.length > 100 ? response.slice(0, 100) + "..." : response,
-      newItems: agentResult.newItems.map(
-        (item) => `${item.type}: ${JSON.stringify(item.rawItem.providerData)}`
-      ),
+    console.log("[Telegram Chat] Workflow completed", {
+      userId,
+      responsePreview: response.length > 100 ? response.slice(0, 100) + "..." : response,
     });
 
     // Store assistant response
