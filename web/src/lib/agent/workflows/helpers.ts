@@ -1,11 +1,13 @@
 import { getGoogleAccessToken } from "@/lib/google-tokens";
 import { generateMcpToken } from "@/lib/mcp-auth";
 
-export const getHostedMcpParams = async (userId: string) => {
+export const getHostedMcpParams = async (userId: string, workflowRunId?: string) => {
   const googleAccessToken = await getGoogleAccessToken(userId);
   const mcpToken = await generateMcpToken(
     userId,
-    googleAccessToken ?? undefined
+    googleAccessToken ?? undefined,
+    undefined, // scopes
+    workflowRunId
   );
   return {
     authorization: `Bearer ${mcpToken}`,

@@ -12,6 +12,17 @@ export default function TelegramAppPage() {
 
   useEffect(() => {
     const checkAuth = async () => {
+      // Check for test_token in URL query params
+      const searchParams = new URLSearchParams(window.location.search);
+      const testToken = searchParams.get("test_token");
+
+      if (testToken) {
+        console.log("[Telegram App] Test token found in URL, storing...");
+        localStorage.setItem("telegram-token", testToken);
+        // Remove test_token from URL for cleaner experience
+        window.history.replaceState({}, "", "/telegram-app");
+      }
+
       const token = localStorage.getItem("telegram-token");
 
       if (!token) {

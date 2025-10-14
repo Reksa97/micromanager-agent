@@ -16,6 +16,7 @@ export function TelegramMiniAppAuthenticated() {
     id: string;
     name: string;
     role: "user" | "admin";
+    tier?: string;
     hasCompletedFirstLoad?: boolean;
   } | null>(null);
 
@@ -73,6 +74,7 @@ export function TelegramMiniAppAuthenticated() {
                 id: profile.id,
                 name: profile.name,
                 role: profile.tier === "admin" ? "admin" : "user",
+                tier: profile.tier,
                 hasCompletedFirstLoad: profile.hasCompletedFirstLoad,
               });
 
@@ -159,7 +161,12 @@ export function TelegramMiniAppAuthenticated() {
             <span className="text-sm text-muted-foreground">
               {user?.name ?? "User"}
             </span>
-            {user?.id && <LinkedAccountsDialog userId={user.id} />}
+            {user?.id && (
+              <LinkedAccountsDialog
+                userId={user.id}
+                userTier={user.tier || "free"}
+              />
+            )}
           </div>
         </div>
         {/* Build info in top corner */}

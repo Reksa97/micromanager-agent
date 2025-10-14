@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import { insertMessages, type MessageSource } from "@/lib/conversations";
+import {
+  deleteConversation,
+  insertMessages,
+  type MessageSource,
+} from "@/lib/conversations";
 import { notifyTelegramUser } from "@/lib/telegram/bot";
 
 const messageSchema = z.object({
@@ -83,8 +87,6 @@ export async function DELETE() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Lazy load to avoid circular
-  const { deleteConversation } = await import("@/lib/conversations");
   await deleteConversation(session.user.id);
 
   return NextResponse.json({ success: true });
