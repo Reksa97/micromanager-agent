@@ -189,6 +189,10 @@ export function getDefaultToolDisplayInfo(
       displayTitle: "🕐 Get current time",
       displayDescription: "",
     },
+    "get_google_tasks": {
+      displayTitle: "✅ Get Tasks",
+      displayDescription: "",
+    }
   };
 
   return toolMap[actualTool] || {

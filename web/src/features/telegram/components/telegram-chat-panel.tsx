@@ -46,6 +46,7 @@ const getToolShortName = (toolName: string): string => {
     "delete-event": "🗑️ Delete Event",
     "get-freebusy": "⏰ Free/Busy",
     "get-current-time": "🕐 Current Time",
+    "get_google_tasks": "✅ Get Tasks"
   };
   return toolNameMap[toolName] || `🔧 ${toolName}`;
 };

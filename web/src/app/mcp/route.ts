@@ -3,6 +3,7 @@ import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { z } from "zod";
 import { ObjectId } from "mongodb";
+import { google, tasks_v1 } from "googleapis";
 
 import {
   ToolRegistry,
@@ -52,6 +53,7 @@ export type McpToolName =
   | "get_user_context"
   | "update_user_context"
   | "get_conversation_messages"
+  | "get_google_tasks"
   | keyof typeof calendarToolHandlers;
 
 // Scope map for tool authorization
@@ -69,6 +71,7 @@ const TOOL_SCOPE_MAP: Record<McpToolName, string[]> = {
   "delete-event": ["calendar:write"],
   "get-freebusy": ["calendar:read"],
   "get-current-time": ["calendar:read"],
+  get_google_tasks: ["calendar:read"]
 };
 
 const scopesFromAuth = (auth?: AuthInfo): Set<string> =>
@@ -539,6 +542,121 @@ const handler = createMcpHandler(
         }
       }
     );
+    server.tool(
+      "get_google_tasks",
+      "Fetches all tasks",
+      {
+        log_message: z
+          .string()
+          .optional()
+          .describe(
+            "Human-readable description of what you're doing with this tool (e.g., 'Check user preferences', 'Save new task')"
+          ),
+        dueMin: z
+          .string()
+          .datetime(),
+        dueMax: z
+          .string()
+          .datetime()
+      },
+      async ({log_message, dueMin, dueMax}, extra) => {
+        console.log(log_message)
+        // Check scope authorization
+        const requiredScopes = TOOL_SCOPE_MAP["get_google_tasks"];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          console.error(
+            "[MCP Auth] Missing required scope for get_google_task_lists"
+          );
+          const errorMsg =
+            "Access denied: Missing required scope 'calendar:read'";
+
+          return formatMcpResponse(errorMsg);
+        }
+
+        try {
+          const oAuth2Client = new google.auth.OAuth2();
+    
+          const googleAccessToken = extra?.authInfo?.extra?.googleAccessToken;
+          if (!googleAccessToken || typeof googleAccessToken !== "string") {
+            console.log("[MCP] Missing google access token");
+            const errorMsg = "Missing Google access token";
+            return formatMcpResponse(errorMsg);
+          }
+
+          oAuth2Client.setCredentials({ access_token: googleAccessToken });
+
+          const tasksClient = google.tasks({ version: "v1", auth: oAuth2Client });
+
+          // Google Tasks (all lists, paginated). Best-effort; skips if scope/API not available.
+          let taskItems:
+            | {
+                id: string;
+                title: string;
+                start: string | null;
+                end: string | null;
+                location?: string;
+                description?: string;
+              }[] = [];
+
+          // List all tasklists (paginate)
+          const allTaskLists: tasks_v1.Schema$TaskList[] = [];
+          let listPageToken: string | undefined = undefined;
+          do {
+            const tasklistsResp: tasks_v1.Params$Resource$Tasklists$List = {
+              maxResults: 100,
+              pageToken: listPageToken,
+            };
+            const tasklistsPage = await tasksClient.tasklists.list(tasklistsResp);
+            allTaskLists.push(...(tasklistsPage.data.items ?? []));
+            listPageToken = tasklistsPage.data.nextPageToken ?? undefined;
+          } while (listPageToken);
+
+          // Fetch tasks from each list (paginate per list)
+          const collected: typeof taskItems = [];
+          for (const tl of allTaskLists) {
+            if (!tl.id) continue;
+            let tasksPageToken: string | undefined = undefined;
+            do {
+              const tasksReq: tasks_v1.Params$Resource$Tasks$List = {
+                tasklist: tl.id,
+                showCompleted: false,
+                showHidden: false,
+                maxResults: 100,
+                pageToken: tasksPageToken,
+                dueMin,
+                dueMax,
+              };
+              const tasksPage = await tasksClient.tasks.list(tasksReq);
+              const items = tasksPage.data.items ?? [];
+              for (const t of items) {
+                // Only consider tasks that have a due date and are not completed
+                if (t.status === "completed") continue;
+                const dueStr = t.due ?? null;
+                if (!dueStr) continue;
+                const due = new Date(dueStr);
+                if (Number.isNaN(due.getTime())) continue;
+                if (due < new Date(dueMin) || due > new Date(dueMax)) continue;
+
+                collected.push({
+                  id: t.id ?? crypto.randomUUID(),
+                  title: t.title ?? "Untitled task",
+                  start: due.toISOString(),
+                  end: due.toISOString(),
+                  description: t.notes ?? undefined,
+                });
+              }
+              tasksPageToken = tasksPage.data.nextPageToken ?? undefined;
+            } while (tasksPageToken);
+          }
+          taskItems = collected;
+
+          return formatMcpResponse(JSON.stringify(taskItems, null, 2));
+        } catch (taskError) {
+          console.warn("[Calendar Events API] Tasks fetch skipped:", taskError);
+          return formatMcpResponse("Failed to fetch tasks")
+        }
+      }
+    );
 
     ToolRegistry.getToolsWithSchemas().forEach((tool) => {
       server.tool(
@@ -700,6 +818,9 @@ const handler = createMcpHandler(
         get_conversation_messages: {
           description:
             "Get recent conversation messages (requires: read:user-context)",
+        },
+        get_google_tasks: {
+          description: "Get all google tasks (requires: calendar:read"
         },
         ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => {
           const scopes = TOOL_SCOPE_MAP[tool.name] || [];
