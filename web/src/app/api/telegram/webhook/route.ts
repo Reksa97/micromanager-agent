@@ -129,7 +129,7 @@ async function setupBot() {
           updatedAt: new Date(),
         });
 
-        await ctx.reply(aiResponse, { parse_mode: "Markdown" });
+        await ctx.reply(aiResponse, { parse_mode: "HTML" });
       } catch (error) {
         console.error("Error processing Telegram message:", error);
         await ctx.reply(
