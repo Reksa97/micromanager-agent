@@ -596,7 +596,7 @@ const handler = createMcpHandler(
             "[MCP Auth] Missing required scope for get_google_task_lists"
           );
           const errorMsg =
-            "Access denied: Missing required scope 'calendar:read'";
+            "Access denied: Missing required scope 'tasks:read'";
           // Log error
           if (workflowRunId) {
             await logToolCall(workflowRunId, toolCallId, {
@@ -821,7 +821,7 @@ const handler = createMcpHandler(
       // Access control is enforced at runtime via scope checks in each tool handler.
       // Users will only be able to execute tools they have scopes for.
       // To generate scoped tokens, use generateMcpToken(userId, googleToken, scopes).
-      // Available scopes: read:user-context, write:user-context, calendar:read, calendar:write
+      // Available scopes: read:user-context, write:user-context, calendar:read, calendar:write, tasks:read, tasks:write
       tools: {
         get_user_context: {
           description: "Get the user context (requires: read:user-context)",
@@ -834,7 +834,7 @@ const handler = createMcpHandler(
             "Get recent conversation messages (requires: read:user-context)",
         },
         get_google_tasks: {
-          description: "Get google tasks in given timeframe (requires: calendar:read)"
+          description: "Get google tasks in given timeframe (requires: tasks:read)"
         },
         ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => {
           const scopes = TOOL_SCOPE_MAP[tool.name] || [];
