@@ -7,6 +7,8 @@ export const MCP_SCOPES = {
   USER_CONTEXT_WRITE: "write:user-context",
   CALENDAR_READ: "calendar:read",
   CALENDAR_WRITE: "calendar:write",
+  TASKS_READ: "tasks:read",
+  TASKS_WRITE: "tasks:write"
 } as const;
 
 export type McpScope = (typeof MCP_SCOPES)[keyof typeof MCP_SCOPES];
@@ -19,6 +21,8 @@ export const MCP_SCOPE_SETS = {
     MCP_SCOPES.USER_CONTEXT_WRITE,
     MCP_SCOPES.CALENDAR_READ,
     MCP_SCOPES.CALENDAR_WRITE,
+    MCP_SCOPES.TASKS_READ,
+    MCP_SCOPES.TASKS_WRITE
   ],
   // Read-only access to user context
   CONTEXT_READ_ONLY: [MCP_SCOPES.USER_CONTEXT_READ],
@@ -36,6 +40,16 @@ export const MCP_SCOPE_SETS = {
     MCP_SCOPES.CALENDAR_READ,
     MCP_SCOPES.CALENDAR_WRITE,
   ],
+  TASKS_READ_ONLY: [
+    MCP_SCOPES.USER_CONTEXT_READ, // Often needed with calendar
+    MCP_SCOPES.TASKS_READ,
+  ],
+  TASKS_FULL: [
+    MCP_SCOPES.USER_CONTEXT_READ,
+    MCP_SCOPES.USER_CONTEXT_WRITE,
+    MCP_SCOPES.TASKS_READ,
+    MCP_SCOPES.TASKS_WRITE,
+  ]
 } as const;
 
 export interface McpTokenPayload {
