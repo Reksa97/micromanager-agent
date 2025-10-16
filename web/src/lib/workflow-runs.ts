@@ -197,6 +197,10 @@ export function getDefaultToolDisplayInfo(
       displayTitle: "✅ Get Tasks",
       displayDescription: "",
     },
+    "create_google_task_list": {
+      displayTitle: "⚒️ Create Task list",
+      displayDescription: "",
+    },
     "insert_google_task": {
       displayTitle: "✅ Insert Task",
       displayDescription: "",
