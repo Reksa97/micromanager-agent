@@ -48,7 +48,8 @@ const getToolShortName = (toolName: string): string => {
     "get-current-time": "🕐 Current Time",
     "get_google_task_lists": "📊 Get Task lists",
     "get_google_tasks": "🗓 Get Tasks",
-    "insert_google_task": "✅ Insert Task"
+    "insert_google_task": "✅ Insert Task",
+    "update_google_task": "💾 Update a Task",
   };
   return toolNameMap[toolName] || `🔧 ${toolName}`;
 };

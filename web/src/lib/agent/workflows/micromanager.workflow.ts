@@ -61,7 +61,8 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       "get-current-time",
       "get_google_task_lists",
       "get_google_tasks",
-      "insert_google_task"
+      "insert_google_task",
+      "update_google_task",
     ] as McpToolName[],
     requireApproval: "never",
     ...(await getHostedMcpParams(workflow.user_id, sessionId)),

@@ -3,7 +3,7 @@ import { tasks_v1 } from "googleapis";
 export type TaskList = {
     id: string;
     title: string;
-}
+};
 
 export type TaskItem = {
     id?: string;
@@ -34,6 +34,33 @@ export const getTaskLists = async (tasksClient: tasks_v1.Tasks) => {
     } while (listPageToken);
     return allTaskLists
 }
+
+export const insertTaskList = async (tasksClient: tasks_v1.Tasks, title: string) => {
+    const taskList: tasks_v1.Schema$TaskList = {
+        title
+    };
+    const response = await tasksClient.tasklists.insert({
+        requestBody: taskList
+    });
+    return {
+        id: response.data.id ?? undefined,
+        title: response.data.title ?? "Untitled task list"
+    };
+};
+
+export const updateTaskList = async (tasksClient: tasks_v1.Tasks, tasklistId: string, title: string | undefined) => {
+    const taskList: tasks_v1.Schema$TaskList = {
+        ...(title ? { title } : {})
+    };
+    const response = await tasksClient.tasklists.patch({
+        tasklist: tasklistId,
+        requestBody: taskList
+    });
+        return {
+        id: response.data.id ?? undefined,
+        title: response.data.title ?? "Untitled task list"
+    };
+};
 
 export const getTasks = async (
     tasksClient: tasks_v1.Tasks,
@@ -71,9 +98,8 @@ export const getTasks = async (
             tasksPageToken = tasksPage.data.nextPageToken ?? undefined;
         } while (tasksPageToken);
     }
-    return collected
-}
-
+    return collected;
+};
 
 export const insertTask = async (
     tasksClient: tasks_v1.Tasks,
@@ -88,9 +114,51 @@ export const insertTask = async (
         status: "needsAction",
         due,
     }
-    const newTask = await tasksClient.tasks.insert({
+    const response = await tasksClient.tasks.insert({
         tasklist: tasklistId,
         requestBody: task
-    })
-    return newTask
-}
+    });
+    return {
+        id: response.data.id ?? undefined,
+        title: response.data.title ?? "Untitled event",
+        due: response.data.due ?? undefined,
+        description: response.data.notes ?? undefined,
+        status: response.data.status ?? "Missing status",
+        completed: response.data.completed ?? undefined,
+    };
+};
+
+export const updateTask = async (
+    tasksClient: tasks_v1.Tasks,
+    taskId: string,
+    tasklistId: string,
+    title: string | undefined,
+    description: string | undefined,
+    status: string | undefined,
+    due: string | undefined
+) => {
+    const task : tasks_v1.Schema$Task = {
+        ...(title ? { title } : {}),
+        ...(description ? { notes: description } : {}),
+        ...(status ? { status } : {}),
+        ...(due ? { due } : {}),
+    }
+    const response = await tasksClient.tasks.patch({
+        tasklist: tasklistId,
+        task: taskId,
+        requestBody: task
+    });
+    return {
+        id: response.data.id ?? undefined,
+        title: response.data.title ?? "Untitled event",
+        due: response.data.due ?? undefined,
+        description: response.data.notes ?? undefined,
+        status: response.data.status ?? "Missing status",
+        completed: response.data.completed ?? undefined,
+    };
+};
+
+export const clearTasks = async (tasksClient: tasks_v1.Tasks, tasklistId: string) => {
+    const response = await tasksClient.tasks.clear({ tasklist: tasklistId });
+    return response;
+};

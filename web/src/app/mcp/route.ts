@@ -31,7 +31,14 @@ import {
   UserContextDocument,
 } from "@/lib/user-context";
 import { getRecentMessages } from "@/lib/conversations";
-import { getTaskLists, getTasks, insertTask, TaskItem } from "@/lib/google-tasks";
+import {
+  getTaskLists,
+  getTasks,
+  insertTask,
+  updateTask,
+  TaskItem,
+  clearTasks
+} from "@/lib/google-tasks";
 
 const formatMcpResponse = (response: string): CallToolResult => ({
   content: [{ type: "text", text: response }],
@@ -57,6 +64,7 @@ export type McpToolName =
   | "get_google_tasks"
   | "get_google_task_lists"
   | "insert_google_task"
+  | "update_google_task"
   | keyof typeof calendarToolHandlers;
 
 // Scope map for tool authorization
@@ -76,7 +84,8 @@ const TOOL_SCOPE_MAP: Record<McpToolName, string[]> = {
   "get-current-time": ["calendar:read"],
   get_google_task_lists: ["tasks:read"],
   get_google_tasks: ["tasks:read"],
-  insert_google_task: ["tasks:write"]
+  insert_google_task: ["tasks:write"],
+  update_google_task: ["tasks:write"]
 };
 
 const scopesFromAuth = (auth?: AuthInfo): Set<string> =>
@@ -839,10 +848,10 @@ const handler = createMcpHandler(
         const requiredScopes = TOOL_SCOPE_MAP[toolName];
         if (!userHasScope(requiredScopes, extra?.authInfo)) {
           console.error(
-            "[MCP Auth] Missing required scope for insert_google_task"
+            `[MCP Auth] Missing required scope for ${toolName}`
           );
           const errorMsg =
-            `Access denied: Missing required scope ${TOOL_SCOPE_MAP[toolName]}`;
+            `Access denied: Missing required scopes ${TOOL_SCOPE_MAP[toolName]}`;
           // Log error
           if (workflowRunId) {
             await logToolCall(workflowRunId, toolCallId, {
@@ -909,7 +918,148 @@ const handler = createMcpHandler(
         }
       }
     );
+    server.tool(
+      "update_google_task",
+      "Update an existing google task",
+      {
+        log_message: z
+          .string()
+          .optional()
+          .describe(
+            "Human-readable description of what you're doing with this tool (e.g., 'Check user preferences', 'Save new task')"
+          ),
+        tasklistId: z
+          .string(),
+        taskId: z
+          .string(),
+        title: z
+          .string()
+          .optional(),
+        description: z
+          .string()
+          .optional(),
+        status: z
+          .enum(["needsAction", "completed"])
+          .optional(),
+        due: z
+          .string()
+          .datetime()
+          .optional(),
+      },
+      async (
+        {
+          log_message,
+          tasklistId,
+          taskId,
+          title,
+          description,
+          status,
+          due
+        },
+        extra
+      ) => {
+        const toolCallId = new ObjectId().toString();
+        const workflowRunId = extra?.authInfo?.extra?.workflowRunId as
+          | string
+          | undefined;
+        const toolName = "update_google_task";
 
+        // Get display info from agent's log_message or fallback
+        const displayInfo = log_message
+          ? { displayTitle: log_message, displayDescription: "" }
+          : getDefaultToolDisplayInfo(toolName);
+
+        // Log tool start (only if workflowRunId exists)
+        if (workflowRunId) {
+          await logToolCall(workflowRunId, toolCallId, {
+            toolName,
+            displayTitle: displayInfo.displayTitle,
+            displayDescription: displayInfo.displayDescription,
+            arguments: { tasklistId, taskId, title, description, status, due },
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).catch((err) =>
+            console.error("Failed to log tool call start:", err)
+          );
+        }
+
+        // Check scope authorization
+        const requiredScopes = TOOL_SCOPE_MAP[toolName];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          console.error(
+            `[MCP Auth] Missing required scope for ${toolName}`
+          );
+          const errorMsg =
+            `Access denied: Missing required scopes ${TOOL_SCOPE_MAP[toolName]}`;
+          // Log error
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+          return formatMcpResponse(errorMsg);
+        }
+
+        try {
+          const oAuth2Client = new google.auth.OAuth2();
+          const googleAccessToken = extra?.authInfo?.extra?.googleAccessToken;
+          if (!googleAccessToken || typeof googleAccessToken !== "string") {
+            console.log("[MCP] Missing google access token");
+            const errorMsg = "Missing Google access token";
+            // Log error
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+            return formatMcpResponse(errorMsg);
+          }
+          oAuth2Client.setCredentials({ access_token: googleAccessToken });
+          const tasksClient = google.tasks({ version: "v1", auth: oAuth2Client });
+          const newTask = await updateTask(tasksClient, taskId, tasklistId, title, description, status, due)
+          if (newTask.status === "completed") {
+            clearTasks(tasksClient, tasklistId)
+          }
+          // Log success
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "success",
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call success:", err)
+            );
+          }
+          
+          return formatMcpResponse(JSON.stringify(newTask, null, 2));
+        } catch (error) {
+          console.warn("[Calendar Tasks API] Failed to update task:", error);
+          const errorMsg = `[Calendar Tasks API] Failed to update task: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`;
+
+          // Log error
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+          return formatMcpResponse("Failed to insert task")
+        }
+      }
+    );
     ToolRegistry.getToolsWithSchemas().forEach((tool) => {
       server.tool(
         tool.name,
@@ -1077,8 +1227,11 @@ const handler = createMcpHandler(
         get_google_tasks: {
           description: "Get google tasks in given timeframe (requires: tasks:read)"
         },
-        insert_google_tasks: {
+        insert_google_task: {
           description: "Insert a new google task (requires: tasks:write)"
+        },
+        update_google_task: {
+          description: "Update an existing google task: (requires: task:write)"
         },
         ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => {
           const scopes = TOOL_SCOPE_MAP[tool.name] || [];

@@ -201,6 +201,10 @@ export function getDefaultToolDisplayInfo(
       displayTitle: "✅ Insert Task",
       displayDescription: "",
     },
+    "update_google_task": {
+      displayTitle: "💾 Update a Task",
+      displayDescription: "",
+    },
   };
 
   return toolMap[actualTool] || {
