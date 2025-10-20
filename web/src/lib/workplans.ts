@@ -30,6 +30,7 @@ export interface StoredWorkplan {
   createdAt: Date;
   updatedAt: Date;
   source: "auto" | "manual";
+  role: string | null;
 }
 
 export interface WorkplanWithEvent extends StoredWorkplan {
@@ -69,6 +70,9 @@ export function hasEventChanged(
 }
 
 export function isWorkplanStale(workplan: StoredWorkplan) {
+  if (workplan.source === "manual") {
+    return false;
+  }
   const now = Date.now();
   const ageMinutes =
     (now - new Date(workplan.lastGeneratedAt).getTime()) / (1000 * 60);
@@ -101,7 +105,8 @@ export async function saveWorkplan(
   event: WorkplanEventSnapshot,
   steps: string[],
   status: WorkplanStatus = "ready",
-  source: "auto" | "manual" = "auto"
+  source: "auto" | "manual" = "auto",
+  role: string | null = null
 ): Promise<StoredWorkplan> {
   const collection = await getCollection();
   const now = new Date();
@@ -112,6 +117,7 @@ export async function saveWorkplan(
     steps,
     status,
     source,
+    role,
     lastGeneratedAt: now,
     updatedAt: now,
   };
@@ -125,16 +131,21 @@ export async function saveWorkplan(
     { upsert: true, returnDocument: "after" }
   );
 
-  if (!saved) {
+  const savedDoc =
+    saved && "value" in saved ? (saved.value as StoredWorkplan | null) : (saved as StoredWorkplan | null);
+
+  if (!savedDoc) {
     return {
       ...update,
       createdAt: now,
+      role: role ?? null,
     };
   }
 
   return {
-    ...saved,
-    id: saved._id?.toString() ?? saved.id,
+    ...savedDoc,
+    id: savedDoc._id?.toString() ?? savedDoc.id,
+    role: savedDoc.role ?? role ?? null,
   };
 }
 

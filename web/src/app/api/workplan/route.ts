@@ -61,6 +61,8 @@ export async function GET(request: NextRequest) {
           plan.lastGeneratedAt instanceof Date
             ? plan.lastGeneratedAt.toISOString()
             : plan.lastGeneratedAt,
+        source: plan.source,
+        role: plan.role ?? null,
       })),
     });
   }
@@ -100,6 +102,8 @@ export async function GET(request: NextRequest) {
             workplan.lastGeneratedAt instanceof Date
               ? workplan.lastGeneratedAt.toISOString()
               : workplan.lastGeneratedAt,
+          source: workplan.source,
+          role: workplan.role ?? null,
         });
       } catch (error) {
         console.error("[Workplan API] Failed to ensure plan:", error);
@@ -114,6 +118,7 @@ export async function GET(request: NextRequest) {
           },
           steps: [],
           status: "error" as const,
+          role: null,
           error:
             error instanceof Error ? error.message : "Failed to generate plan",
         });

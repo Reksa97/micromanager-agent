@@ -63,7 +63,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       steps: workplan.steps,
       status: workplan.status,
-      lastGeneratedAt: workplan.lastGeneratedAt,
+      lastGeneratedAt:
+        workplan.lastGeneratedAt instanceof Date
+          ? workplan.lastGeneratedAt.toISOString()
+          : workplan.lastGeneratedAt,
+      role: workplan.role ?? null,
     });
   } catch (error) {
     console.error("[WorkPlan API] Error:", error);

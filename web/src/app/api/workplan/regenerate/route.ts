@@ -17,6 +17,7 @@ const requestSchema = z.object({
     location: z.string().optional().nullable(),
     description: z.string().optional().nullable(),
   }),
+  userRole: z.string().optional().nullable(),
 });
 
 export async function POST(request: Request) {
@@ -40,10 +41,12 @@ export async function POST(request: Request) {
 
   try {
     const snapshot = normaliseEventSnapshot(parseResult.data.event);
+    const roleHint = parseResult.data.userRole?.trim();
     const workplan = await regenerateWorkplanForEvent({
       userId: session.user.id,
       eventId: parseResult.data.event.id,
       event: snapshot,
+      roleHint,
     } satisfies WorkplanGenerationInput);
 
     return NextResponse.json({
@@ -53,7 +56,11 @@ export async function POST(request: Request) {
       },
       steps: workplan.steps,
       status: workplan.status,
-      lastGeneratedAt: workplan.lastGeneratedAt,
+      lastGeneratedAt:
+        workplan.lastGeneratedAt instanceof Date
+          ? workplan.lastGeneratedAt.toISOString()
+          : workplan.lastGeneratedAt,
+      role: workplan.role ?? null,
     });
   } catch (error) {
     console.error("[Workplan Regenerate API] Error:", error);

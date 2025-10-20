@@ -23,13 +23,26 @@ export async function ensureWorkplanForEvent(
   input: WorkplanGenerationInput
 ): Promise<StoredWorkplan> {
   const snapshot = normaliseEventSnapshot(input.event);
-  const existing = await findWorkplan(input.userId, input.eventId);
+  const existingRaw = await findWorkplan(input.userId, input.eventId);
+  const existing = ensureRoleField(existingRaw);
+  const normalizedRoleHint = normaliseRole(input.roleHint);
+  const existingRole = existing?.role ?? null;
+  const role = normalizedRoleHint ?? existingRole;
+  const roleChanged =
+    normalizedRoleHint !== null &&
+    normalizedRoleHint !== existingRole &&
+    existing?.source !== "manual";
+
+  if (existing?.source === "manual") {
+    return existing;
+  }
 
   if (
     existing &&
     !hasEventChanged(existing, snapshot) &&
     !isWorkplanStale(existing) &&
-    existing.steps.length > 0
+    existing.steps.length > 0 &&
+    !roleChanged
   ) {
     return existing;
   }
@@ -37,7 +50,7 @@ export async function ensureWorkplanForEvent(
   try {
     const steps = await generateSteps({
       event: snapshot,
-      roleHint: input.roleHint,
+      roleHint: role ?? undefined,
     });
     return await saveWorkplan(
       input.userId,
@@ -45,7 +58,8 @@ export async function ensureWorkplanForEvent(
       snapshot,
       steps,
       "ready",
-      "auto"
+      "auto",
+      role
     );
   } catch (error) {
     console.error("[Workplan] Generation failed:", error);
@@ -61,11 +75,15 @@ export async function regenerateWorkplanForEvent(
   input: WorkplanGenerationInput
 ): Promise<StoredWorkplan> {
   const snapshot = normaliseEventSnapshot(input.event);
+  const existing = ensureRoleField(
+    await findWorkplan(input.userId, input.eventId)
+  );
+  const role = normaliseRole(input.roleHint) ?? existing?.role ?? null;
 
   try {
     const steps = await generateSteps({
       event: snapshot,
-      roleHint: input.roleHint,
+      roleHint: role ?? undefined,
     });
     return await saveWorkplan(
       input.userId,
@@ -73,7 +91,8 @@ export async function regenerateWorkplanForEvent(
       snapshot,
       steps,
       "ready",
-      "auto"
+      "auto",
+      role
     );
   } catch (error) {
     console.error("[Workplan] Regeneration failed:", error);
@@ -124,6 +143,22 @@ Output only the steps as a numbered list.`;
   }
 
   return steps;
+}
+
+function normaliseRole(role?: string | null): string | null {
+  if (!role) return null;
+  const trimmed = role.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function ensureRoleField(
+  plan: StoredWorkplan | null
+): StoredWorkplan | null {
+  if (!plan) return null;
+  if (typeof plan.role === "undefined") {
+    return { ...plan, role: null };
+  }
+  return plan;
 }
 
 function splitToSteps(text: string): string[] {
