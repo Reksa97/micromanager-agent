@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
     // 4. Check if Telegram user already has a Google account linked
     console.log("[Link Telegram] Step 4: Checking for existing Google link on Telegram user:", telegramUserId);
     const existingLink = await db.collection("accounts").findOne({
-      userId: telegramUserId,
+      userId: new ObjectId(telegramUserId),
       provider: "google",
     });
 
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
       { _id: googleAccount._id },
       {
         $set: {
-          userId: telegramUserId,
+          userId: new ObjectId(telegramUserId),
           updatedAt: new Date(),
         },
       }
