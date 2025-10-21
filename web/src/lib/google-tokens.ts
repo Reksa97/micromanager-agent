@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { getMongoClient } from "@/lib/db";
 import { env } from "@/env";
+import { ObjectId } from "mongodb";
 
 export interface GoogleTokens {
   accessToken: string;
@@ -9,7 +10,7 @@ export interface GoogleTokens {
 }
 
 interface GoogleAccountDocument {
-  userId: string;
+  userId: ObjectId;
   type: string;
   provider: string;
   providerAccountId: string;
@@ -83,7 +84,7 @@ export async function getUserGoogleTokens(
 
     // Find Google account for this user
     const account = await accountsCollection.findOne({
-      userId,
+      userId: new ObjectId(userId),
       provider: "google",
     });
 
@@ -103,7 +104,7 @@ export async function getUserGoogleTokens(
 
       // Update DB with new token
       await accountsCollection.updateOne(
-        { userId, provider: "google" },
+        { userId: new ObjectId(userId), provider: "google" },
         {
           $set: {
             access_token: accessToken,
@@ -146,7 +147,7 @@ export async function refreshUserGoogleToken(
       client.db().collection<GoogleAccountDocument>("accounts");
 
     const account = await accountsCollection.findOne({
-      userId,
+      userId: new ObjectId(userId),
       provider: "google",
     });
 
@@ -162,7 +163,7 @@ export async function refreshUserGoogleToken(
 
     // Update DB
     await accountsCollection.updateOne(
-      { userId, provider: "google" },
+      { userId: new ObjectId(userId), provider: "google" },
       {
         $set: {
           access_token: accessToken,
