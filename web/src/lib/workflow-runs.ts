@@ -189,6 +189,26 @@ export function getDefaultToolDisplayInfo(
       displayTitle: "🕐 Get current time",
       displayDescription: "",
     },
+    "get_google_task_lists": {
+      displayTitle: "📊 Get Task lists",
+      displayDescription: ""
+    },
+    "get_google_tasks": {
+      displayTitle: "✅ Get Tasks",
+      displayDescription: "",
+    },
+    "create_google_task_list": {
+      displayTitle: "⚒️ Create Task list",
+      displayDescription: "",
+    },
+    "insert_google_task": {
+      displayTitle: "✅ Insert Task",
+      displayDescription: "",
+    },
+    "update_google_task": {
+      displayTitle: "💾 Update a Task",
+      displayDescription: "",
+    },
   };
 
   return toolMap[actualTool] || {
