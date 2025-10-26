@@ -913,8 +913,8 @@ const handler = createMcpHandler(
           return formatMcpResponse(JSON.stringify(newTaskList, null, 2));
         } catch (error) {
           console.warn("[Calendar Tasks API] Failed to create task list:", error);
-          const errorMsg = `[Calendar Tasks API] Failed to create task list: ${
-            error instanceof Error ? error.message : "Unknown error"
+          const errorMsg = `Failed to create task list: ${
+            error instanceof Error ? error.message : String(error)
           }`;
 
           // Log error
@@ -927,7 +927,7 @@ const handler = createMcpHandler(
               console.error("Failed to log tool call error:", err)
             );
           }
-          return formatMcpResponse("Failed to insert task")
+          return formatMcpResponse(errorMsg);
         }
       }
     );
@@ -1034,8 +1034,8 @@ const handler = createMcpHandler(
           return formatMcpResponse(JSON.stringify(newTask, null, 2));
         } catch (error) {
           console.warn("[Calendar Tasks API] Failed to insert task:", error);
-          const errorMsg = `[Calendar Tasks API] Failed to insert task: ${
-            error instanceof Error ? error.message : "Unknown error"
+          const errorMsg = `Failed to insert task: ${
+            error instanceof Error ? error.message : String(error)
           }`;
 
           // Log error
@@ -1048,7 +1048,7 @@ const handler = createMcpHandler(
               console.error("Failed to log tool call error:", err)
             );
           }
-          return formatMcpResponse("Failed to insert task")
+          return formatMcpResponse(errorMsg);
         }
       }
     );
@@ -1176,8 +1176,8 @@ const handler = createMcpHandler(
           return formatMcpResponse(JSON.stringify(newTask, null, 2));
         } catch (error) {
           console.warn("[Calendar Tasks API] Failed to update task:", error);
-          const errorMsg = `[Calendar Tasks API] Failed to update task: ${
-            error instanceof Error ? error.message : "Unknown error"
+          const errorMsg = `Failed to update task: ${
+            error instanceof Error ? error.message : String(error)
           }`;
 
           // Log error
@@ -1190,7 +1190,7 @@ const handler = createMcpHandler(
               console.error("Failed to log tool call error:", err)
             );
           }
-          return formatMcpResponse("Failed to insert task")
+          return formatMcpResponse(errorMsg);
         }
       }
     );
