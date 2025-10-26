@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { auth } from "@/auth";
 import {
-  normaliseEventSnapshot,
+  normalizeEventSnapshot,
   WorkplanEventSnapshot,
 } from "@/lib/workplans";
 import {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   }
 
   const roleHint = parsed.data.userRole?.trim();
-  const snapshot: WorkplanEventSnapshot = normaliseEventSnapshot(
+  const snapshot: WorkplanEventSnapshot = normalizeEventSnapshot(
     parsed.data.event
   );
 

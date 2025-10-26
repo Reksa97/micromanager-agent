@@ -7,7 +7,7 @@ import {
   findWorkplan,
   hasEventChanged,
   isWorkplanStale,
-  normaliseEventSnapshot,
+  normalizeEventSnapshot,
   saveWorkplan,
   markWorkplanStatus,
 } from "@/lib/workplans";
@@ -22,10 +22,10 @@ export interface WorkplanGenerationInput {
 export async function ensureWorkplanForEvent(
   input: WorkplanGenerationInput
 ): Promise<StoredWorkplan> {
-  const snapshot = normaliseEventSnapshot(input.event);
+  const snapshot = normalizeEventSnapshot(input.event);
   const existingRaw = await findWorkplan(input.userId, input.eventId);
   const existing = ensureRoleField(existingRaw);
-  const normalizedRoleHint = normaliseRole(input.roleHint);
+  const normalizedRoleHint = normalizeRole(input.roleHint);
   const existingRole = existing?.role ?? null;
   const role = normalizedRoleHint ?? existingRole;
   const roleChanged =
@@ -74,11 +74,11 @@ export async function ensureWorkplanForEvent(
 export async function regenerateWorkplanForEvent(
   input: WorkplanGenerationInput
 ): Promise<StoredWorkplan> {
-  const snapshot = normaliseEventSnapshot(input.event);
+  const snapshot = normalizeEventSnapshot(input.event);
   const existing = ensureRoleField(
     await findWorkplan(input.userId, input.eventId)
   );
-  const role = normaliseRole(input.roleHint) ?? existing?.role ?? null;
+  const role = normalizeRole(input.roleHint) ?? existing?.role ?? null;
 
   try {
     const steps = await generateSteps({
@@ -145,7 +145,7 @@ Output only the steps as a numbered list.`;
   return steps;
 }
 
-function normaliseRole(role?: string | null): string | null {
+function normalizeRole(role?: string | null): string | null {
   if (!role) return null;
   const trimmed = role.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;

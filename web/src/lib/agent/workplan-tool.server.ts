@@ -12,7 +12,7 @@ import {
 } from "@/lib/workplan-generator";
 import {
   listWorkplans,
-  normaliseEventSnapshot,
+  normalizeEventSnapshot,
   StoredWorkplan,
 } from "@/lib/workplans";
 import { getGoogleAccessToken } from "@/lib/google-tokens";
@@ -117,7 +117,7 @@ export const createWorkplanTool = (userId: string): Tool =>
 
       const usedEventIds = new Set<string>();
       for (const plan of cachedMatches) {
-        result.workplans.push(serialiseStoredWorkplan(plan));
+        result.workplans.push(serializeStoredWorkplan(plan));
         if (plan.eventId) {
           usedEventIds.add(plan.eventId);
         }
@@ -168,7 +168,7 @@ export const createWorkplanTool = (userId: string): Tool =>
           continue;
         }
 
-        const snapshot = normaliseEventSnapshot({
+        const snapshot = normalizeEventSnapshot({
           title: item.title,
           start: item.start,
           end: item.end,
@@ -215,7 +215,7 @@ export const createWorkplanTool = (userId: string): Tool =>
 
 const UPCOMING_DAYS_DEFAULT = 7;
 
-function serialiseStoredWorkplan(plan: StoredWorkplan) {
+function serializeStoredWorkplan(plan: StoredWorkplan) {
   return {
     event: {
       id: plan.eventId,

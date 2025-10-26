@@ -45,7 +45,7 @@ async function getCollection() {
   return collection;
 }
 
-export function normaliseEventSnapshot(event: Partial<WorkplanEventSnapshot>): WorkplanEventSnapshot {
+export function normalizeEventSnapshot(event: Partial<WorkplanEventSnapshot>): WorkplanEventSnapshot {
   return {
     title: event.title ?? "Untitled event",
     start: event.start ?? null,

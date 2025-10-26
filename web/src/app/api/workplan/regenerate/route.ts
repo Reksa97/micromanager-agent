@@ -6,7 +6,7 @@ import {
   regenerateWorkplanForEvent,
   WorkplanGenerationInput,
 } from "@/lib/workplan-generator";
-import { normaliseEventSnapshot } from "@/lib/workplans";
+import { normalizeEventSnapshot } from "@/lib/workplans";
 
 const requestSchema = z.object({
   event: z.object({
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const snapshot = normaliseEventSnapshot(parseResult.data.event);
+    const snapshot = normalizeEventSnapshot(parseResult.data.event);
     const roleHint = parseResult.data.userRole?.trim();
     const workplan = await regenerateWorkplanForEvent({
       userId: session.user.id,

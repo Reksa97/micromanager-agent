@@ -8,7 +8,7 @@ import {
   WorkplanGenerationInput,
 } from "@/lib/workplan-generator";
 import {
-  normaliseEventSnapshot,
+  normalizeEventSnapshot,
   WorkplanEventSnapshot,
   listWorkplans,
 } from "@/lib/workplans";
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     const items = [];
     for (const item of calendarItems) {
       try {
-        const snapshot: WorkplanEventSnapshot = normaliseEventSnapshot({
+        const snapshot: WorkplanEventSnapshot = normalizeEventSnapshot({
           title: item.title,
           start: item.start,
           end: item.end,
