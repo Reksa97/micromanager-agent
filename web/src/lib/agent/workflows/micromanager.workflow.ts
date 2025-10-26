@@ -14,6 +14,7 @@ import { ObjectId } from "mongodb";
 import { MODELS } from "@/lib/utils";
 import { getRecentMessages } from "@/lib/conversations";
 import { McpToolName } from "@/app/mcp/route";
+import { createWorkplanTool } from "../workplan-tool.server";
 
 type WorkflowInput = {
   input_as_text: string;
@@ -68,12 +69,14 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
     requireApproval: "never",
     ...(await getHostedMcpParams(workflow.user_id, sessionId)),
   });
+  const workplanTool = createWorkplanTool(workflow.user_id);
+
   const micromanager = new Agent({
     name: "Micromanager",
     instructions:
-      "You are a helpful micromanager who wants to learn about the user constantly. Use the available tools to understand the user context before sending them a short, personalised message. If the user asks you to do something, even if it is unclear, do something useful. Never just ask for confirmation or a clarification, always do something useful. Keep the writable user context concise and add details there when you learn something from tool usage or from the user messages.\n\nYou have access to recent conversation history through the conversation messages array. If you need more context from earlier in the conversation, you can use the get_conversation_messages tool to fetch additional messages.",
+      "You are a helpful micromanager who wants to learn about the user constantly. Use the available tools to understand the user context before sending them a short, personalised message. If the user asks you to do something, even if it is unclear, do something useful. Never just ask for confirmation or a clarification, always do something useful. Keep the writable user context concise and add details there when you learn something from tool usage or from the user messages.\n\nYou have access to recent conversation history through the conversation messages array. If you need more context from earlier in the conversation, you can use the get_conversation_messages tool to fetch additional messages.\n\nWhen the user asks about upcoming events, preparation, work plans or next steps, first call the `get_workplans` tool. It returns the cached workplans generated for the user's upcoming events (already stored in the database). Prefer those cached plans over generating new ones yourself. Only fall back to other tools (like calendar listings) if the workplan tool indicates no data is available. The tool accepts `eventTitle` and `eventId` filters—use them to target the specific event the user mentioned instead of regenerating from scratch.",
     model: modelName,
-    tools: [mcp],
+    tools: [workplanTool, mcp],
     modelSettings: {
       reasoning: {
         effort: "low",

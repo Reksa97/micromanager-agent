@@ -3,15 +3,12 @@ import { z } from "zod";
 
 import { auth } from "@/auth";
 import {
-  normaliseEventSnapshot,
-  WorkplanEventSnapshot,
-} from "@/lib/workplans";
-import {
-  ensureWorkplanForEvent,
   regenerateWorkplanForEvent,
+  WorkplanGenerationInput,
 } from "@/lib/workplan-generator";
+import { normaliseEventSnapshot } from "@/lib/workplans";
 
-const bodySchema = z.object({
+const requestSchema = z.object({
   event: z.object({
     id: z.string().min(1),
     title: z.string().min(1),
@@ -20,7 +17,7 @@ const bodySchema = z.object({
     location: z.string().optional().nullable(),
     description: z.string().optional().nullable(),
   }),
-  userRole: z.string().optional(),
+  userRole: z.string().optional().nullable(),
 });
 
 export async function POST(request: Request) {
@@ -30,37 +27,33 @@ export async function POST(request: Request) {
   }
 
   const payload = await request.json().catch(() => null);
-  const parsed = bodySchema.safeParse(payload);
+  const parseResult = requestSchema.safeParse(payload);
 
-  if (!parsed.success) {
+  if (!parseResult.success) {
     return NextResponse.json(
-      { error: "Invalid payload", details: parsed.error.flatten().fieldErrors },
+      {
+        error: "Invalid payload",
+        details: parseResult.error.flatten().fieldErrors,
+      },
       { status: 422 }
     );
   }
 
-  const roleHint = parsed.data.userRole?.trim();
-  const snapshot: WorkplanEventSnapshot = normaliseEventSnapshot(
-    parsed.data.event
-  );
-
   try {
-    const workplan =
-      parsed.data.userRole && parsed.data.userRole.trim().length > 0
-        ? await regenerateWorkplanForEvent({
-            userId: session.user.id,
-            eventId: parsed.data.event.id,
-            event: snapshot,
-            roleHint,
-          })
-        : await ensureWorkplanForEvent({
-            userId: session.user.id,
-            eventId: parsed.data.event.id,
-            event: snapshot,
-            roleHint,
-          });
+    const snapshot = normaliseEventSnapshot(parseResult.data.event);
+    const roleHint = parseResult.data.userRole?.trim();
+    const workplan = await regenerateWorkplanForEvent({
+      userId: session.user.id,
+      eventId: parseResult.data.event.id,
+      event: snapshot,
+      roleHint,
+    } satisfies WorkplanGenerationInput);
 
     return NextResponse.json({
+      event: {
+        id: parseResult.data.event.id,
+        ...snapshot,
+      },
       steps: workplan.steps,
       status: workplan.status,
       lastGeneratedAt:
@@ -70,9 +63,12 @@ export async function POST(request: Request) {
       role: workplan.role ?? null,
     });
   } catch (error) {
-    console.error("[WorkPlan API] Error:", error);
+    console.error("[Workplan Regenerate API] Error:", error);
     return NextResponse.json(
-      { error: "Failed to generate plan" },
+      {
+        error: "Failed to regenerate workplan",
+        details: error instanceof Error ? error.message : undefined,
+      },
       { status: 500 }
     );
   }
