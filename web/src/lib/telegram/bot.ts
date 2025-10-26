@@ -89,7 +89,8 @@ export async function linkTelegramUserToGoogle(
     throw new Error(`No user found with telegramId: ${telegramId}`);
   }
 
-  const userId = user._id.toString();
+  const userIdStr = user._id.toString();
+  const userIdObjectId = user._id; // Keep ObjectId for accounts collection
 
   // Update user with Google email if provided
   if (googleAccount.email) {
@@ -104,12 +105,13 @@ export async function linkTelegramUserToGoogle(
     );
   }
 
-  // Upsert Google account
+  // Upsert Google account - userId must be ObjectId (NextAuth MongoDB adapter standard)
+  // Source: https://github.com/nextauthjs/next-auth/blob/main/packages/adapter-mongodb/src/index.ts
   await accountsCollection.updateOne(
-    { userId, provider: "google" },
+    { userId: userIdObjectId, provider: "google" },
     {
       $set: {
-        userId,
+        userId: userIdObjectId,
         type: "oauth",
         provider: "google",
         providerAccountId: googleAccount.providerAccountId,
@@ -125,7 +127,7 @@ export async function linkTelegramUserToGoogle(
   );
 
   console.log(`Linked Telegram user ${telegramId} to Google account`, {
-    userId,
+    userId: userIdStr,
     email: googleAccount.email,
   });
 }

@@ -25,9 +25,11 @@ export async function GET(req: NextRequest) {
     const db = client.db();
 
     // Get user's linked accounts
+    // Note: NextAuth MongoDB adapter creates accounts with string userId,
+    // but we normalize to ObjectId after linking. Query for ObjectId only.
     const accounts = await db
       .collection("accounts")
-      .find({ userId })
+      .find({ userId: new ObjectId(userId) })
       .toArray();
 
     // Get user info for email and Telegram details

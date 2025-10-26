@@ -88,20 +88,12 @@ export async function POST(req: NextRequest) {
     const googleUserIdStr = googleUser._id.toString();
     console.log("[Link Telegram] Step 3: Finding Google account for userId:", googleUserIdStr);
 
-    // Try both string and ObjectId formats (MongoDB adapter might use either)
-    let googleAccount = await db.collection("accounts").findOne({
-      userId: googleUserIdStr,
+    // NextAuth MongoDB adapter stores userId as ObjectId
+    // Source: https://github.com/nextauthjs/next-auth/blob/main/packages/adapter-mongodb/src/index.ts
+    const googleAccount = await db.collection("accounts").findOne({
+      userId: new ObjectId(googleUserIdStr),
       provider: "google",
     });
-
-    // If not found as string, try as ObjectId
-    if (!googleAccount) {
-      console.log("[Link Telegram] Not found as string, trying ObjectId format...");
-      googleAccount = await db.collection("accounts").findOne({
-        userId: new ObjectId(googleUserIdStr),
-        provider: "google",
-      });
-    }
 
     console.log("[Link Telegram] Google account result:", {
       found: !!googleAccount,
@@ -117,30 +109,6 @@ export async function POST(req: NextRequest) {
         userId: googleUserIdStr,
         email: session.user.email,
       });
-
-      // Debug: List all accounts for this user (try both formats)
-      const allAccountsStr = await db.collection("accounts").find({ userId: googleUserIdStr }).toArray();
-      const allAccountsObj = await db.collection("accounts").find({ userId: new ObjectId(googleUserIdStr) }).toArray();
-
-      console.error("[Link Telegram] All accounts (string userId):", allAccountsStr.map(a => ({
-        provider: a.provider,
-        userId: a.userId,
-        userIdType: typeof a.userId,
-      })));
-      console.error("[Link Telegram] All accounts (ObjectId userId):", allAccountsObj.map(a => ({
-        provider: a.provider,
-        userId: a.userId,
-        userIdType: typeof a.userId,
-      })));
-
-      // Debug: List ALL accounts to see what's in the database
-      const allAccounts = await db.collection("accounts").find({}).limit(20).toArray();
-      console.error("[Link Telegram] All accounts in DB (sample):", allAccounts.map(a => ({
-        provider: a.provider,
-        userId: a.userId,
-        userIdType: typeof a.userId,
-        email: a.email,
-      })));
 
       return NextResponse.json(
         { error: "No Google account found. Please sign in with Google first." },
@@ -209,21 +177,38 @@ export async function POST(req: NextRequest) {
       modified: updateResult.modifiedCount,
     });
 
-    // 7. Update Telegram user with email
-    console.log("[Link Telegram] Step 7: Updating Telegram user with email:", session.user.email);
+    // 7. Update Telegram user with email (only if current email is a fallback)
+    console.log("[Link Telegram] Step 7: Updating Telegram user with email:", {
+      currentEmail: telegramUser.email,
+      newEmail: session.user.email,
+    });
+
+    // Only replace fallback emails (username or @telegram.local), not real email addresses
+    const shouldUpdateEmail =
+      !telegramUser.email ||
+      telegramUser.email === telegramUser.username ||
+      telegramUser.email?.includes("@telegram.local");
+
+    const userUpdate: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+
+    if (shouldUpdateEmail) {
+      userUpdate.email = session.user.email;
+      console.log("[Link Telegram] Will update email from fallback to Google email");
+    } else {
+      console.log("[Link Telegram] Keeping existing email (not a fallback):", telegramUser.email);
+    }
+
     const userUpdateResult = await db.collection("users").updateOne(
       { _id: new ObjectId(telegramUserId) },
-      {
-        $set: {
-          email: session.user.email,
-          updatedAt: new Date(),
-        },
-      }
+      { $set: userUpdate }
     );
 
     console.log("[Link Telegram] User update result:", {
       matched: userUpdateResult.matchedCount,
       modified: userUpdateResult.modifiedCount,
+      emailUpdated: shouldUpdateEmail,
     });
 
     console.log(`[Link Telegram] ✅ Successfully linked Google account ${session.user.email} to Telegram user ${telegramId}`);
