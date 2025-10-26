@@ -40,6 +40,20 @@ import {
   TaskItem,
   clearTasks
 } from "@/lib/google-tasks";
+import {
+  listWorkplans,
+  normalizeEventSnapshot,
+} from "@/lib/workplans";
+import {
+  ensureWorkplanForEvent,
+  regenerateWorkplanForEvent,
+  WorkplanGenerationInput,
+} from "@/lib/workplan-generator";
+import { fetchUpcomingCalendarItems } from "@/lib/calendar";
+import {
+  WORKPLAN_DEFAULT_EVENT_LIMIT,
+  WORKPLAN_MAX_EVENT_LIMIT,
+} from "@/lib/constants";
 
 const formatMcpResponse = (response: string): CallToolResult => ({
   content: [{ type: "text", text: response }],
@@ -67,6 +81,8 @@ export type McpToolName =
   | "create_google_task_list"
   | "insert_google_task"
   | "update_google_task"
+  | "get_workplans"
+  | "update_workplan"
   | keyof typeof calendarToolHandlers;
 
 // Scope map for tool authorization
@@ -88,7 +104,9 @@ const TOOL_SCOPE_MAP: Record<McpToolName, string[]> = {
   get_google_tasks: ["tasks:read"],
   create_google_task_list: ["tasks:write"],
   insert_google_task: ["tasks:write"],
-  update_google_task: ["tasks:write"]
+  update_google_task: ["tasks:write"],
+  get_workplans: ["read:user-context"],
+  update_workplan: ["write:user-context"]
 };
 
 const scopesFromAuth = (auth?: AuthInfo): Set<string> =>
@@ -895,8 +913,8 @@ const handler = createMcpHandler(
           return formatMcpResponse(JSON.stringify(newTaskList, null, 2));
         } catch (error) {
           console.warn("[Calendar Tasks API] Failed to create task list:", error);
-          const errorMsg = `[Calendar Tasks API] Failed to create task list: ${
-            error instanceof Error ? error.message : "Unknown error"
+          const errorMsg = `Failed to create task list: ${
+            error instanceof Error ? error.message : String(error)
           }`;
 
           // Log error
@@ -909,7 +927,7 @@ const handler = createMcpHandler(
               console.error("Failed to log tool call error:", err)
             );
           }
-          return formatMcpResponse("Failed to insert task")
+          return formatMcpResponse(errorMsg);
         }
       }
     );
@@ -1016,8 +1034,8 @@ const handler = createMcpHandler(
           return formatMcpResponse(JSON.stringify(newTask, null, 2));
         } catch (error) {
           console.warn("[Calendar Tasks API] Failed to insert task:", error);
-          const errorMsg = `[Calendar Tasks API] Failed to insert task: ${
-            error instanceof Error ? error.message : "Unknown error"
+          const errorMsg = `Failed to insert task: ${
+            error instanceof Error ? error.message : String(error)
           }`;
 
           // Log error
@@ -1030,7 +1048,7 @@ const handler = createMcpHandler(
               console.error("Failed to log tool call error:", err)
             );
           }
-          return formatMcpResponse("Failed to insert task")
+          return formatMcpResponse(errorMsg);
         }
       }
     );
@@ -1158,8 +1176,8 @@ const handler = createMcpHandler(
           return formatMcpResponse(JSON.stringify(newTask, null, 2));
         } catch (error) {
           console.warn("[Calendar Tasks API] Failed to update task:", error);
-          const errorMsg = `[Calendar Tasks API] Failed to update task: ${
-            error instanceof Error ? error.message : "Unknown error"
+          const errorMsg = `Failed to update task: ${
+            error instanceof Error ? error.message : String(error)
           }`;
 
           // Log error
@@ -1172,7 +1190,370 @@ const handler = createMcpHandler(
               console.error("Failed to log tool call error:", err)
             );
           }
-          return formatMcpResponse("Failed to insert task")
+          return formatMcpResponse(errorMsg);
+        }
+      }
+    );
+    server.tool(
+      "get_workplans",
+      "Retrieve cached workplans for the user's upcoming calendar events",
+      {
+        log_message: z
+          .string()
+          .optional()
+          .describe(
+            "Human-readable description of what you're doing with this tool"
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(WORKPLAN_MAX_EVENT_LIMIT)
+          .optional()
+          .describe("Maximum number of upcoming events to include"),
+        days: z
+          .number()
+          .int()
+          .min(1)
+          .max(60)
+          .optional()
+          .describe("Calendar lookahead window in days (default: 7)"),
+        eventId: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Filter by specific calendar event ID (exact match)"),
+        eventTitle: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Filter by event title (case-insensitive substring match)"),
+      },
+      async ({ log_message, limit, days, eventId, eventTitle }, extra) => {
+        const toolCallId = new ObjectId().toString();
+        const workflowRunId = extra?.authInfo?.extra?.workflowRunId as
+          | string
+          | undefined;
+        const toolName = "get_workplans";
+
+        const displayInfo = log_message
+          ? { displayTitle: log_message, displayDescription: "" }
+          : getDefaultToolDisplayInfo(toolName);
+
+        if (workflowRunId) {
+          await logToolCall(workflowRunId, toolCallId, {
+            toolName,
+            displayTitle: displayInfo.displayTitle,
+            displayDescription: displayInfo.displayDescription,
+            arguments: { limit, days, eventId, eventTitle },
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).catch((err) =>
+            console.error("Failed to log tool call start:", err)
+          );
+        }
+
+        const requiredScopes = TOOL_SCOPE_MAP[toolName];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          console.error(`[MCP Auth] Missing required scope for ${toolName}`);
+          const errorMsg = `Access denied: Missing required scope ${requiredScopes.join(", ")}`;
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+          return formatMcpResponse(errorMsg);
+        }
+
+        try {
+          const userId = extra?.authInfo?.clientId;
+          if (!userId) {
+            const errorMsg = "User ID is required";
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+            return formatMcpResponse(errorMsg);
+          }
+
+          const cappedLimit = limit ?? WORKPLAN_DEFAULT_EVENT_LIMIT;
+          const normalizedEventId = eventId?.trim();
+          const normalizedEventTitle = eventTitle?.trim().toLowerCase();
+
+          const matchesFilters = (title?: string | null, id?: string) => {
+            if (normalizedEventId && id && normalizedEventId !== id) {
+              return false;
+            }
+            if (normalizedEventTitle) {
+              const compare = title?.toLowerCase() ?? "";
+              if (!compare.includes(normalizedEventTitle)) {
+                return false;
+              }
+            }
+            return true;
+          };
+
+          const cachedPlans = await listWorkplans(
+            userId,
+            Math.max(cappedLimit * 3, WORKPLAN_MAX_EVENT_LIMIT)
+          );
+          const cachedMatches = cachedPlans
+            .filter((plan) => matchesFilters(plan.event.title, plan.eventId))
+            .slice(0, cappedLimit);
+
+          const result = {
+            workplans: cachedMatches.map((plan) => ({
+              event: {
+                id: plan.eventId,
+                ...plan.event,
+              },
+              steps: plan.steps,
+              status: plan.status,
+              lastGeneratedAt:
+                plan.lastGeneratedAt instanceof Date
+                  ? plan.lastGeneratedAt.toISOString()
+                  : plan.lastGeneratedAt,
+              source: plan.source,
+              role: plan.role ?? null,
+            })),
+          };
+
+          const usedEventIds = new Set<string>(
+            cachedMatches.map((p) => p.eventId)
+          );
+
+          const googleAccessToken = extra?.authInfo?.extra?.googleAccessToken;
+
+          if (
+            googleAccessToken &&
+            typeof googleAccessToken === "string" &&
+            result.workplans.length < cappedLimit
+          ) {
+            const windowDays = days ?? 7;
+            const fetchLimit =
+              normalizedEventId || normalizedEventTitle
+                ? cappedLimit * 3
+                : cappedLimit;
+
+            const calendarItems = await fetchUpcomingCalendarItems(
+              googleAccessToken,
+              windowDays,
+              fetchLimit
+            );
+
+            const filteredItems = calendarItems.filter((item) =>
+              matchesFilters(item.title, item.id ?? undefined)
+            );
+
+            for (const item of filteredItems) {
+              if (result.workplans.length >= cappedLimit) break;
+              if (item.id && usedEventIds.has(item.id)) continue;
+
+              const snapshot = normalizeEventSnapshot({
+                title: item.title,
+                start: item.start,
+                end: item.end,
+                location: item.location,
+                description: item.description,
+              });
+
+              try {
+                const workplan = await ensureWorkplanForEvent({
+                  userId,
+                  eventId: item.id,
+                  event: snapshot,
+                } satisfies WorkplanGenerationInput);
+
+                result.workplans.push({
+                  event: {
+                    id: item.id,
+                    ...snapshot,
+                  },
+                  steps: workplan.steps,
+                  status: workplan.status,
+                  lastGeneratedAt:
+                    workplan.lastGeneratedAt instanceof Date
+                      ? workplan.lastGeneratedAt.toISOString()
+                      : workplan.lastGeneratedAt,
+                  source: workplan.source,
+                  role: workplan.role ?? null,
+                });
+                if (item.id) usedEventIds.add(item.id);
+              } catch (error) {
+                console.error("[MCP get_workplans] Failed to ensure plan:", error);
+              }
+            }
+          }
+
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "success",
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call success:", err)
+            );
+          }
+
+          return formatMcpResponse(JSON.stringify(result, null, 2));
+        } catch (error) {
+          console.error("[MCP get_workplans] Error:", error);
+          const errorMsg = `Failed to get workplans: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`;
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+          return formatMcpResponse(errorMsg);
+        }
+      }
+    );
+    server.tool(
+      "update_workplan",
+      "Update or regenerate a workplan for a specific event",
+      {
+        log_message: z
+          .string()
+          .optional()
+          .describe(
+            "Human-readable description of what you're doing with this tool"
+          ),
+        eventId: z.string().min(1).describe("Calendar event ID"),
+        event: z
+          .object({
+            title: z.string().min(1),
+            start: z.string().optional().nullable(),
+            end: z.string().optional().nullable(),
+            location: z.string().optional().nullable(),
+            description: z.string().optional().nullable(),
+          })
+          .describe("Event details"),
+        userRole: z
+          .string()
+          .optional()
+          .describe("User's role for this event (e.g., 'organizer', 'attendee')"),
+      },
+      async ({ log_message, eventId, event, userRole }, extra) => {
+        const toolCallId = new ObjectId().toString();
+        const workflowRunId = extra?.authInfo?.extra?.workflowRunId as
+          | string
+          | undefined;
+        const toolName = "update_workplan";
+
+        const displayInfo = log_message
+          ? { displayTitle: log_message, displayDescription: "" }
+          : getDefaultToolDisplayInfo(toolName);
+
+        if (workflowRunId) {
+          await logToolCall(workflowRunId, toolCallId, {
+            toolName,
+            displayTitle: displayInfo.displayTitle,
+            displayDescription: displayInfo.displayDescription,
+            arguments: { eventId, event, userRole },
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).catch((err) =>
+            console.error("Failed to log tool call start:", err)
+          );
+        }
+
+        const requiredScopes = TOOL_SCOPE_MAP[toolName];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          console.error(`[MCP Auth] Missing required scope for ${toolName}`);
+          const errorMsg = `Access denied: Missing required scope ${requiredScopes.join(", ")}`;
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+          return formatMcpResponse(errorMsg);
+        }
+
+        try {
+          const userId = extra?.authInfo?.clientId;
+          if (!userId) {
+            const errorMsg = "User ID is required";
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+            return formatMcpResponse(errorMsg);
+          }
+
+          const snapshot = normalizeEventSnapshot(event);
+          const roleHint = userRole?.trim();
+
+          const workplan = await regenerateWorkplanForEvent({
+            userId,
+            eventId,
+            event: snapshot,
+            roleHint,
+          } satisfies WorkplanGenerationInput);
+
+          const result = {
+            event: {
+              id: eventId,
+              ...snapshot,
+            },
+            steps: workplan.steps,
+            status: workplan.status,
+            lastGeneratedAt:
+              workplan.lastGeneratedAt instanceof Date
+                ? workplan.lastGeneratedAt.toISOString()
+                : workplan.lastGeneratedAt,
+            role: workplan.role ?? null,
+          };
+
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "success",
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call success:", err)
+            );
+          }
+
+          return formatMcpResponse(JSON.stringify(result, null, 2));
+        } catch (error) {
+          console.error("[MCP update_workplan] Error:", error);
+          const errorMsg = `Failed to update workplan: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`;
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+          return formatMcpResponse(errorMsg);
         }
       }
     );
@@ -1351,6 +1732,12 @@ const handler = createMcpHandler(
         },
         update_google_task: {
           description: "Update an existing google task: (requires: task:write)"
+        },
+        get_workplans: {
+          description: "Retrieve cached workplans for upcoming calendar events (requires: read:user-context)"
+        },
+        update_workplan: {
+          description: "Update or regenerate a workplan for a specific event (requires: write:user-context)"
         },
         ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => {
           const scopes = TOOL_SCOPE_MAP[tool.name] || [];

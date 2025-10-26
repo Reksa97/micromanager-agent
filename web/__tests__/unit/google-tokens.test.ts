@@ -6,6 +6,7 @@ import {
 } from "@/lib/google-tokens";
 import { getMongoClient } from "@/lib/db";
 import { google } from "googleapis";
+import { ObjectId } from "mongodb";
 
 // Mock dependencies
 jest.mock("@/lib/db");
@@ -74,9 +75,9 @@ describe("Google Tokens Utility", () => {
   });
 
   describe("getUserGoogleTokens", () => {
-    const mockUserId = "test-user-123";
+    const mockUserId = "507f1f77bcf86cd799439011";
     const mockAccount = {
-      userId: mockUserId,
+      userId: new ObjectId(mockUserId),
       provider: "google",
       access_token: "valid-access-token",
       refresh_token: "valid-refresh-token",
@@ -90,7 +91,7 @@ describe("Google Tokens Utility", () => {
 
       expect(result).toBeNull();
       expect(mockCollection.findOne).toHaveBeenCalledWith({
-        userId: mockUserId,
+        userId: new ObjectId(mockUserId),
         provider: "google",
       });
     });
@@ -137,7 +138,7 @@ describe("Google Tokens Utility", () => {
       });
       expect(mockOAuth2Client.refreshAccessToken).toHaveBeenCalled();
       expect(mockCollection.updateOne).toHaveBeenCalledWith(
-        { userId: mockUserId, provider: "google" },
+        { userId: new ObjectId(mockUserId), provider: "google" },
         {
           $set: {
             access_token: newAccessToken,
@@ -186,9 +187,9 @@ describe("Google Tokens Utility", () => {
   });
 
   describe("refreshUserGoogleToken", () => {
-    const mockUserId = "test-user-123";
+    const mockUserId = "507f1f77bcf86cd799439011";
     const mockAccount = {
-      userId: mockUserId,
+      userId: new ObjectId(mockUserId),
       provider: "google",
       access_token: "old-access-token",
       refresh_token: "valid-refresh-token",
@@ -240,11 +241,11 @@ describe("Google Tokens Utility", () => {
   });
 
   describe("getGoogleAccessToken", () => {
-    const mockUserId = "test-user-123";
+    const mockUserId = "507f1f77bcf86cd799439011";
 
     it("should return access token if tokens are available", async () => {
       const mockAccount = {
-        userId: mockUserId,
+        userId: new ObjectId(mockUserId),
         provider: "google",
         access_token: "valid-access-token",
         refresh_token: "valid-refresh-token",
@@ -268,21 +269,21 @@ describe("Google Tokens Utility", () => {
 
   describe("Database interaction", () => {
     it("should query accounts collection with correct parameters", async () => {
-      const userId = "user-123";
+      const userId = "507f1f77bcf86cd799439011";
       mockCollection.findOne.mockResolvedValue(null);
 
       await getUserGoogleTokens(userId);
 
       expect(mockCollection.findOne).toHaveBeenCalledWith({
-        userId,
+        userId: new ObjectId(userId),
         provider: "google",
       });
     });
 
     it("should update only access_token and expires_at fields", async () => {
-      const userId = "user-123";
+      const userId = "507f1f77bcf86cd799439011";
       const mockAccount = {
-        userId,
+        userId: new ObjectId(userId),
         provider: "google",
         access_token: "old-token",
         refresh_token: "refresh-token",

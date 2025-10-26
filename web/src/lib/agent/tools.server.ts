@@ -9,6 +9,8 @@ export const getBackendTools = async (userId: string) => {
   const googleAccessToken = (await getGoogleAccessToken(userId)) ?? undefined;
   const mcpAuthToken = await generateMcpToken(userId, googleAccessToken);
 
-  const tools: Tool[] = [micromanagerMCP(mcpAuthToken)];
+  const tools: Tool[] = [
+    micromanagerMCP(mcpAuthToken),
+  ];
   return tools;
 };
