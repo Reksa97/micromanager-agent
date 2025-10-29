@@ -2,18 +2,13 @@ import { test, expect, Page } from "@playwright/test";
 import { authenticateUser } from "../helpers/authenticateUser";
 import { clearStorage } from "../helpers/clearStorage";
 import { resetProgress } from "../helpers/resetProgress";
-import { ensureTestUser } from "../helpers/ensureTestUser";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 // --- Main test suite ---
-test.describe("First-Load Experience", () => {
+test.describe.serial("First-Load Experience", () => {
   let jwtToken: string;
-
-  test.beforeAll(async () => {
-    await ensureTestUser(2);
-  });
 
   test.beforeEach(async ({ page }) => {
     await clearStorage(page);
@@ -21,8 +16,7 @@ test.describe("First-Load Experience", () => {
   });
 
   test("should show first-load experience for new users", async ({ page }) => {
-    const res = await resetProgress(page, jwtToken);
-    console.log(`Reset progress response status: ${res.status()}`);
+    await resetProgress(page, jwtToken);
     await authenticateUser(page, 2);
 
     // Wait for first-load onboarding UI
@@ -58,6 +52,7 @@ test.describe("First-Load Experience", () => {
 
   test("should poll backend for real progress updates", async ({ page }) => {
     await resetProgress(page, jwtToken);
+    await authenticateUser(page, 2);
 
     const statusRequests: string[] = [];
     page.on("request", (req) => {

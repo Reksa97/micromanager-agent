@@ -1,7 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 import { authenticateUser } from "../helpers/authenticateUser";
 import { clearStorage } from "../helpers/clearStorage";
-import { ensureTestUser } from "../helpers/ensureTestUser";
 
 /**
  * E2E Test for Telegram-Google Calendar Linking
@@ -17,12 +16,9 @@ const TEST_TELEGRAM_ID = 999000000;
 
 test.describe("Telegram-Google Calendar Linking", () => {
   
-  test.beforeAll(async () => {
-    await ensureTestUser();
-  });
-
   test.beforeEach(async ({ page }) => {
     await clearStorage(page);
+    const jwtToken = await authenticateUser(page);
     await authenticateUser(page);
   });
 

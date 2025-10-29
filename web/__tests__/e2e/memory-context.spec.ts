@@ -5,7 +5,6 @@ import { ensureTestUser } from "../helpers/ensureTestUser";
 test.describe("Memory Context API", () => {
   test("should retrieve and update user context", async ({ page }) => {
     // Step 1: Authenticate via UI and get Telegram JWT
-    await ensureTestUser();
     const telegramJwt = await authenticateUser(page);
 
     // Step 2: Call context API directly with JWT in headers

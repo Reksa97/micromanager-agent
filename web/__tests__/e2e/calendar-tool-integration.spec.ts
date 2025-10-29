@@ -2,21 +2,16 @@ import { test, expect, Page } from "@playwright/test";
 import { authenticateUser } from "../helpers/authenticateUser";
 import { clearStorage } from "../helpers/clearStorage";
 import { mockLinkedAccounts } from "../helpers/mockLinkedAccounts";
-import { ensureTestUser } from "../helpers/ensureTestUser";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 test.describe("Google Calendar Integration", () => {
-  let telegramJwt: string;
-
-  test.beforeAll(async () => {
-    await ensureTestUser();
-  });
-
+  
   test.beforeEach(async ({ page }) => {
     await clearStorage(page);
-    telegramJwt = await authenticateUser(page);
+    const jwtToken = await authenticateUser(page);
+    await authenticateUser(page);
   });
 
   test("should display connected Google account", async ({ page }) => {
