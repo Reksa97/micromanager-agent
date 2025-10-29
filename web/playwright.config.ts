@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: "html",
 
   use: {
-    baseURL: "https://localhost:3000",
+    baseURL: process.env.APP_URL ?? 'http://localhost:3000',
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     ignoreHTTPSErrors: true, // Allow self-signed certificates

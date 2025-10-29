@@ -9,6 +9,7 @@ const bodySchema = z.object({
   email: z.string().email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
   name: z.string().min(2, "Name must be at least 2 characters"),
+  tier: z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -33,6 +34,8 @@ export async function POST(request: Request) {
   }
 
   const { email, password, name } = parseResult.data;
+  const tier = parseResult.data.tier ?? "free";
+
   const normalizedEmail = email.toLowerCase();
 
   const client = await getMongoClient();
@@ -57,7 +60,7 @@ export async function POST(request: Request) {
     emailVerified: null,
     name,
     password: hashedPassword,
-    tier: "free",
+    tier: tier,
     image: null,
     createdAt: now,
     updatedAt: now,
