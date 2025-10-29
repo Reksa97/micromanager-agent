@@ -4,7 +4,6 @@ export async function ensureTestUser(userNumber = 1) {
   const TEST_USER = userNumber === 1 ? TEST_USERS.user1 : TEST_USERS.user2;
   const { email, password, name, tier } = TEST_USER;
 
-  console.log(`Ensuring test user tier: ${tier}`);
   const response = await fetch(`${APP_URL}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
