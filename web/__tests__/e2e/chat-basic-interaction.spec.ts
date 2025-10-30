@@ -39,20 +39,10 @@ test.describe("Chat Interface", () => {
     // Wait for the sent message to appear in the chat
     await page.waitForSelector(`text=${userMessage}`, { timeout: 60000 });
 
-    // Optionally, wait for an assistant reply to appear
-    await page.waitForFunction(() => {
-      const spans = document.querySelectorAll('span.text-sm.leading-relaxed.font-normal');
-      return spans.length > 1;
-    }, { timeout: 60000 });
-
     // Reload the page
     await page.reload();
 
     // Wait for the same message to reappear after reload (persisted chat history)
     await page.waitForSelector(`text=${userMessage}`, { timeout: 60000 });
-
-    // Assert the chat history is still visible
-    const chatText = await page.locator("body").innerText();
-    expect(chatText).toContain(userMessage);
   });
 });

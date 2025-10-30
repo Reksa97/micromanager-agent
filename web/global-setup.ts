@@ -14,4 +14,26 @@ export default async function globalSetup() {
   await ensureTestUser();
   await ensureTestUser(2);
 
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+
+  const token = await authenticateUser(page);
+
+  try {
+    const response = await fetch(`${APP_URL}/api/first-load/init`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to initialize first-load");
+    }
+
+    console.log("[First Load] Initialization complete");
+  } catch (error) {
+    console.error("[First Load] Error initializing:", error);
+  }
+
 }
