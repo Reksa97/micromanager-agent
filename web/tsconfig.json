@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     "next-env.d.ts",
     ".next-dev/types/**/*.ts"
-  ],
+, "../global-setup.ts"  ],
   "exclude": ["node_modules"]
 }
