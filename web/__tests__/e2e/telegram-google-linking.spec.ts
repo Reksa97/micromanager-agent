@@ -1,6 +1,7 @@
 import { test, expect, Page } from "@playwright/test";
 import { authenticateUser } from "../helpers/authenticateUser";
 import { clearStorage } from "../helpers/clearStorage";
+import { APP_URL } from "../helpers/config";
 
 /**
  * E2E Test for Telegram-Google Calendar Linking
@@ -18,7 +19,7 @@ test.describe("Telegram-Google Calendar Linking", () => {
   
   test.beforeEach(async ({ page }) => {
     await clearStorage(page);
-    const jwtToken = await authenticateUser(page);
+    await authenticateUser(page);
     await authenticateUser(page);
   });
 
@@ -62,7 +63,7 @@ test.describe("Telegram-Google Calendar Linking", () => {
 
     // Verify we're redirected to Google OAuth
     await linkingPage.waitForLoadState("networkidle");
-    expect(linkingPage.url()).toContain("https://micromanager-agent.vercel.app/link-telegram");
+    expect(linkingPage.url()).toContain(`${APP_URL}/link-telegram`);
   });
 
   test("should link Google account after OAuth callback", async ({
@@ -127,7 +128,7 @@ test.describe("Google Calendar Features (After Linking)", () => {
     test.skip(true, "Requires linked Google account");
 
     // Navigate to chat
-    await page.goto("http://localhost:3000/telegram-app");
+    await page.goto(`${APP_URL}/telegram-app`);
 
     // Send a message to check calendar
     const chatInput = page.getByPlaceholder(/type a message/i);
