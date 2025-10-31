@@ -16,6 +16,9 @@ import {
   WORKPLAN_DEFAULT_EVENT_LIMIT,
   WORKPLAN_MAX_EVENT_LIMIT,
 } from "@/lib/constants";
+import { env } from "@/env";
+import { jwtVerify } from "jose";
+import { getGoogleAccessToken } from "@/lib/google-tokens";
 
 const querySchema = z.object({
   days: z
@@ -31,9 +34,37 @@ const querySchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  // Try NextAuth session first
   const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let userId = session?.user?.id;
+  let googleAccessToken = session?.googleAccessToken;
+
+  // If no NextAuth session, check for Telegram JWT
+  if (!userId) {
+    try {
+      let token = request.cookies.get("telegram-auth-token")?.value;
+      const authHeader = request.headers.get("Authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+      }
+
+      if (token) {
+        const { payload } = await jwtVerify(token, env.JWT_SECRET);
+        if (typeof payload.sub === "string") {
+          userId = payload.sub;
+          googleAccessToken = await getGoogleAccessToken(userId);
+        }
+      }
+    } catch (error) {
+      console.error("[Workplan API] Failed to verify Telegram token", error);
+    }
+  }
+
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized - valid session required" },
+      { status: 401 }
+    );
   }
 
   const url = new URL(request.url);
@@ -47,8 +78,8 @@ export async function GET(request: NextRequest) {
     ? parseResult.data.limit ?? WORKPLAN_DEFAULT_EVENT_LIMIT
     : WORKPLAN_DEFAULT_EVENT_LIMIT;
 
-  if (!session.googleAccessToken) {
-    const cached = await listWorkplans(session.user.id, limit);
+  if (!googleAccessToken) {
+    const cached = await listWorkplans(userId, limit);
     return NextResponse.json({
       workplans: cached.map((plan) => ({
         event: {
@@ -69,7 +100,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const calendarItems = await fetchUpcomingCalendarItems(
-      session.googleAccessToken,
+      googleAccessToken,
       days,
       limit
     );
@@ -86,7 +117,7 @@ export async function GET(request: NextRequest) {
         });
 
         const workplan = await ensureWorkplanForEvent({
-          userId: session.user.id,
+          userId,
           eventId: item.id,
           event: snapshot,
         } satisfies WorkplanGenerationInput);

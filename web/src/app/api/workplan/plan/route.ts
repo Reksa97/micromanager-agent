@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
@@ -10,6 +10,9 @@ import {
   ensureWorkplanForEvent,
   regenerateWorkplanForEvent,
 } from "@/lib/workplan-generator";
+import { getGoogleAccessToken } from "@/lib/google-tokens";
+import { jwtVerify } from "jose";
+import { env } from "@/env";
 
 const bodySchema = z.object({
   event: z.object({
@@ -23,10 +26,38 @@ const bodySchema = z.object({
   userRole: z.string().optional(),
 });
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Try NextAuth session first
   const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let userId = session?.user?.id;
+  let googleAccessToken = session?.googleAccessToken;
+
+  // If no NextAuth session, check for Telegram JWT
+  if (!userId) {
+    try {
+      let token = request.cookies.get("telegram-auth-token")?.value;
+      const authHeader = request.headers.get("Authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+      }
+
+      if (token) {
+        const { payload } = await jwtVerify(token, env.JWT_SECRET);
+        if (typeof payload.sub === "string") {
+          userId = payload.sub;
+          googleAccessToken = await getGoogleAccessToken(userId);
+        }
+      }
+    } catch (error) {
+      console.error("[Workplan API] Failed to verify Telegram token", error);
+    }
+  }
+
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized - valid session required" },
+      { status: 401 }
+    );
   }
 
   const payload = await request.json().catch(() => null);
@@ -48,13 +79,13 @@ export async function POST(request: Request) {
     const workplan =
       parsed.data.userRole && parsed.data.userRole.trim().length > 0
         ? await regenerateWorkplanForEvent({
-            userId: session.user.id,
+            userId: userId,
             eventId: parsed.data.event.id,
             event: snapshot,
             roleHint,
           })
         : await ensureWorkplanForEvent({
-            userId: session.user.id,
+            userId: userId,
             eventId: parsed.data.event.id,
             event: snapshot,
             roleHint,
