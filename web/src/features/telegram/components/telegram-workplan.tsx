@@ -12,7 +12,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { WORKPLAN_DEFAULT_EVENT_LIMIT } from "@/lib/constants";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ function WorkPlanTab({
   onClick,
 }: {
   item: WorkplanEntry,
-  isActive: Boolean,
+  isActive: boolean,
   onClick: () => void
 }) {
   const startDate = item.event.start
@@ -440,8 +440,7 @@ export function TelegramWorkPlanPanel() {
           selectedId={selectedId}
           setSelectedId={setSelectedId}
         />
-      <div className="grid gap-6 p-3">
-        
+      <CardContent className="grid gap-6">
         <WorkPlanRoleSelector 
           selectedRoleDraft={selectedRoleDraft}
           handleRoleChange={handleRoleChange}
@@ -451,7 +450,7 @@ export function TelegramWorkPlanPanel() {
           loadingList={loadingList}
         />
         {selectedContent}
-      </div>
+      </CardContent>
     </Card>
   );
 }

@@ -9,7 +9,6 @@ import {
 import { normalizeEventSnapshot } from "@/lib/workplans";
 import { jwtVerify } from "jose";
 import { env } from "@/env";
-import { getGoogleAccessToken } from "@/lib/google-tokens";
 
 const requestSchema = z.object({
   event: z.object({
@@ -27,7 +26,6 @@ export async function POST(request: NextRequest) {
   // Try NextAuth session first
   const session = await auth();
   let userId = session?.user?.id;
-  let googleAccessToken = session?.googleAccessToken;
 
   // If no NextAuth session, check for Telegram JWT
   if (!userId) {
@@ -42,7 +40,6 @@ export async function POST(request: NextRequest) {
         const { payload } = await jwtVerify(token, env.JWT_SECRET);
         if (typeof payload.sub === "string") {
           userId = payload.sub;
-          googleAccessToken = await getGoogleAccessToken(userId);
         }
       }
     } catch (error) {
