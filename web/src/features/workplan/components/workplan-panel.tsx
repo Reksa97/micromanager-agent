@@ -19,9 +19,9 @@ import { cn } from "@/lib/utils";
 import { WORKPLAN_DEFAULT_EVENT_LIMIT } from "@/lib/constants";
 import { Input } from "@/components/ui/input";
 
-type WorkplanStatus = "ready" | "stale" | "error";
+export type WorkplanStatus = "ready" | "stale" | "error";
 
-type WorkplanEntry = {
+export type WorkplanEntry = {
   event: {
     id: string;
     title: string;
@@ -401,7 +401,7 @@ export function WorkPlanPanel() {
   );
 }
 
-function StatusBadge({ status }: { status: WorkplanStatus }) {
+export function StatusBadge({ status }: { status: WorkplanStatus }) {
   if (status === "ready") {
     return (
       <Badge
@@ -427,7 +427,7 @@ function StatusBadge({ status }: { status: WorkplanStatus }) {
   );
 }
 
-function formatEventDateRange(start: Date | null, end: Date | null) {
+export function formatEventDateRange(start: Date | null, end: Date | null) {
   if (!start && !end) {
     return "No time specified";
   }
@@ -463,7 +463,7 @@ function formatTime(date: Date) {
   });
 }
 
-function timeAgo(dateIso: string) {
+export function timeAgo(dateIso: string) {
   const ts = new Date(dateIso).getTime();
   if (Number.isNaN(ts)) return "unknown";
   const diff = Date.now() - ts;
@@ -480,7 +480,7 @@ function timeAgo(dateIso: string) {
   return `${days}d ago`;
 }
 
-function getMockWorkplans(): WorkplanEntry[] {
+export function getMockWorkplans(): WorkplanEntry[] {
   const mocks = getMockEvents();
   return mocks.map((event) => ({
     event,
@@ -574,13 +574,13 @@ function addDays(date: Date, amount: number) {
   return next;
 }
 
-function normaliseRole(role?: string | null): string | null {
+export function normaliseRole(role?: string | null): string | null {
   if (!role) return null;
   const trimmed = role.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function inferRoleFromEvent(event: WorkplanEntry["event"]) {
+export function inferRoleFromEvent(event: WorkplanEntry["event"]) {
   const title = (event.title || "").toLowerCase();
   if (title.match(/\b(cook|dinner|recipe|kitchen)\b/)) return "cook";
   if (title.match(/\b(clean|laundry|chores)\b/)) return "cleaner";
