@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { ObjectId } from "mongodb";
 import { env } from "@/env";
 
-async function checkSystemAdmin(req: NextRequest) {
+export async function checkSystemAdmin(req: NextRequest) {
   // Check both session auth and JWT token
   const session = await auth();
 

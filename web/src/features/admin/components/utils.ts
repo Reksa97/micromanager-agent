@@ -25,3 +25,18 @@ export interface AuditLogEntry {
   totalTokens?: number;
   totalCost?: number;
 }
+
+export interface UsageLog {
+  _id: string;
+  userId: string;
+  taskType: string;
+  model: string;
+  source: string;
+  success: boolean;
+  toolCalls: number;
+  toolNames: string[];
+  totalTokens: number;
+  totalCost: number;
+  duration: number;
+  createdAt: string;
+}

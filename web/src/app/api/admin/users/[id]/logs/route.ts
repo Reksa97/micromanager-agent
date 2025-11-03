@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUsageLogsForUser } from "@/lib/audit";
+import type { UsageLog } from "@/features/admin/components/utils";
+import type { WithId } from "mongodb";
 
 export async function GET(
   _req: Request,
@@ -10,7 +12,7 @@ export async function GET(
   try {
     const usageLogs = await getUsageLogsForUser(userId);
 
-    const filteredLogs = usageLogs.map((log: any) => ({
+    const filteredLogs = usageLogs.map((log: WithId<UsageLog>) => ({
       id: log._id?.toString(),
       timestamp: log.createdAt,
       durationMs: log.duration,
