@@ -22,6 +22,7 @@ import type { StoredMessage } from "@/lib/conversations";
 import { TIER_PERMISSIONS, type UserProfile } from "@/types/user";
 import { useRealtimeAgent } from "@/features/chat/hooks/use-realtime-agent";
 import type { ChatMessage } from "@/features/chat/types";
+import { TelegramWorkPlanPanel } from "./telegram-workplan";
 
 const DEFAULT_CONFIG_ITEMS = [] as const;
 
@@ -812,6 +813,7 @@ function StatusTickerSection({
           />
         </div>
       </div>
+      <TelegramWorkPlanPanel />
     </div>
   );
 }
