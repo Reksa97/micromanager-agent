@@ -32,9 +32,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, Users, Shield, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Users,
+  Shield,
+  RefreshCw,
+  Trash2,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { UserProfile as User, UserTier } from "@/types/user";
+
+import UserProfileCard from "./user-profile-card";
+import UserContextViewer from "./user-context-viewer";
+import UserAuditLogList from "./user-log-list";
+import { AuditLogEntry, UserContext } from "./utils";
 
 export function AdminDashboard() {
   const [users, setUsers] = useState<User[]>([]);
@@ -42,6 +56,11 @@ export function AdminDashboard() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [resetting, setResetting] = useState(false);
+
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [userData, setUserData] = useState<
+    Record<string, { context: UserContext | null; logs: AuditLogEntry[] }>
+  >({});
 
   const fetchUsers = async () => {
     try {
@@ -73,7 +92,7 @@ export function AdminDashboard() {
       if (!response.ok) throw new Error("Failed to update user");
 
       toast.success("User updated successfully");
-      await fetchUsers(); // Refresh the list
+      await fetchUsers();
     } catch (error) {
       console.error("Error updating user:", error);
       toast.error("Failed to update user");
@@ -92,27 +111,55 @@ export function AdminDashboard() {
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to reset database");
-      }
+      if (!response.ok) throw new Error(data.error || "Failed to reset database");
 
       toast.success(data.message || "Database reset successfully");
       setShowResetDialog(false);
-
-      // Clear local state
       setUsers([]);
-
-      // Refresh after a short delay
-      setTimeout(() => {
-        fetchUsers();
-      }, 1000);
+      setTimeout(() => fetchUsers(), 1000);
     } catch (error) {
       console.error("Error resetting database:", error);
       toast.error(error instanceof Error ? error.message : "Failed to reset database");
     } finally {
       setResetting(false);
     }
+  };
+
+  const fetchUserDetails = async (userId: string) => {
+    try {
+      const [contextRes, logsRes] = await Promise.all([
+        fetch(`/api/context`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action: "get", format: "json" }),
+        }),
+        fetch(`/api/admin/users/${userId}/logs`, { credentials: "include" }),
+      ]);
+
+      const contextData = contextRes.ok ? await contextRes.json() : null;
+      const logsData = logsRes.ok ? await logsRes.json() : { logs: [] };
+
+      setUserData((prev) => ({
+        ...prev,
+        [userId]: {
+          context: contextData ? JSON.parse(contextData.output || "{}") : null,
+          logs: logsData.logs ?? [],
+        },
+      }));
+    } catch (err) {
+      console.error("Error fetching user details:", err);
+      toast.error("Failed to fetch user details");
+    }
+  };
+
+  const toggleExpand = async (userId: string) => {
+    if (expandedUserId === userId) {
+      setExpandedUserId(null);
+      return;
+    }
+    setExpandedUserId(userId);
+    if (!userData[userId]) await fetchUserDetails(userId);
   };
 
   if (loading) {
@@ -135,18 +182,18 @@ export function AdminDashboard() {
   };
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="mb-8">
+    <div className="container mx-auto py-8 space-y-8">
+      <div>
         <h1 className="text-3xl font-bold">System Admin Dashboard</h1>
         <p className="text-muted-foreground">
-          Manage users, tiers, and permissions
+          Manage users, tiers, and inspect user data
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="mb-8 grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -159,21 +206,20 @@ export function AdminDashboard() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Paid Users</CardTitle>
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.paidUsers}</div>
             <p className="text-xs text-muted-foreground">
-              {((stats.paidUsers / stats.totalUsers) * 100).toFixed(0)}%
-              conversion
+              {((stats.paidUsers / stats.totalUsers) * 100).toFixed(0)}% conversion
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Actions</CardTitle>
             <RefreshCw className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -201,53 +247,92 @@ export function AdminDashboard() {
       <Card>
         <CardHeader>
           <CardTitle>All Users</CardTitle>
-          <CardDescription>Manage user tiers</CardDescription>
+          <CardDescription>Manage user tiers and inspect data</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead></TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Tier</TableHead>
                 <TableHead>Last Login</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{user.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {user.email || `TG: ${user.telegramId}`}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={user.tier}
-                      onValueChange={(value: UserTier) =>
-                        updateUser(user.id, { tier: value })
-                      }
-                      disabled={updating === user.id}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="free">Free</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      {new Date(user.lastLogin).toLocaleDateString()}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {users.map((user) => {
+                const expanded = expandedUserId === user.id;
+                const details = userData[user.id];
+
+                return (
+                  <>
+                    <TableRow key={user.id}>
+                      <TableCell className="w-8 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleExpand(user.id)}
+                        >
+                          {expanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{user.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {user.email || `TG: ${user.telegramId}`}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={user.tier}
+                          onValueChange={(value: UserTier) =>
+                            updateUser(user.id, { tier: value })
+                          }
+                          disabled={updating === user.id}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="free">Free</SelectItem>
+                            <SelectItem value="paid">Paid</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {new Date(user.lastLogin).toLocaleDateString()}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {expanded && (
+                      <TableRow>
+                        <TableCell colSpan={4}>
+                          <div className="border-t mt-2 pt-4 space-y-4">
+                            <UserProfileCard user={user} />
+                            <UserContextViewer
+                              context={details?.context ?? null}
+                              loading={!details}
+                            />
+                            <UserAuditLogList
+                              logs={details?.logs ?? []}
+                              loading={!details}
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
