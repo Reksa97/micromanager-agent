@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Send, Loader2, Phone, PhoneOff, RefreshCw } from "lucide-react";
+import { Send, Loader2, Phone, PhoneOff, RefreshCw, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -31,6 +31,25 @@ const DEFAULT_TICKER_CONTENT = {
   assistant: "",
   tools: "",
 } as const;
+
+const hasCalendarScope = (scopes?: string | string[] | null): boolean => {
+  if (!scopes) return false;
+  const scopeList = Array.isArray(scopes)
+    ? scopes
+    : scopes
+        .split(/[,\s]+/)
+        .map((scope) => scope.trim())
+        .filter(Boolean);
+  return scopeList.some((scope) =>
+    scope.includes("googleapis.com/auth/calendar")
+  );
+};
+
+type LinkedAccount = {
+  provider?: string;
+  connected?: boolean;
+  scopes?: string | string[] | null;
+};
 
 // Helper function to get tool short name with emoji
 const getToolShortName = (toolName: string): string => {
@@ -88,6 +107,8 @@ export function TelegramChatPanel({
     (typeof toolCallHistory)[0] | null
   >(null);
   const [isToolModalOpen, setIsToolModalOpen] = useState(false);
+  const [hasCalendarLinked, setHasCalendarLinked] = useState(false);
+  const [isCheckingCalendarLink, setIsCheckingCalendarLink] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -191,6 +212,76 @@ export function TelegramChatPanel({
     return false;
   }, [messages]);
 
+  useEffect(() => {
+    if (!userId) {
+      setHasCalendarLinked(false);
+      setIsCheckingCalendarLink(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsCheckingCalendarLink(true);
+
+    const checkCalendarLink = async () => {
+      try {
+        const token = localStorage.getItem("telegram-token");
+        if (!token) {
+          if (isMounted) {
+            setHasCalendarLinked(false);
+          }
+          return;
+        }
+
+        const response = await fetch("/api/user/linked-accounts", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Linked accounts request failed with status ${response.status}`
+          );
+        }
+
+        const data = await response.json();
+        if (!isMounted) return;
+
+        const googleAccount = Array.isArray(data.accounts)
+          ? data.accounts.find(
+              (account: LinkedAccount) => account.provider === "google"
+            )
+          : undefined;
+
+        const isLinked =
+          Boolean(googleAccount?.connected) &&
+          (googleAccount?.scopes
+            ? hasCalendarScope(googleAccount.scopes)
+            : true);
+
+        setHasCalendarLinked(isLinked);
+      } catch (err) {
+        console.error("Failed to verify Google Calendar link:", err);
+        if (isMounted) {
+          setHasCalendarLinked(false);
+        }
+      } finally {
+        if (isMounted) {
+          setIsCheckingCalendarLink(false);
+        }
+      }
+    };
+
+    checkCalendarLink();
+    const interval = setInterval(checkCalendarLink, 60000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [userId]);
+
   // Load user profile and usage
   useEffect(() => {
     const loadProfile = async () => {
@@ -249,6 +340,13 @@ export function TelegramChatPanel({
 
   // Poll for workflow runs - show current run when active, previous run when idle
   useEffect(() => {
+    if (!hasCalendarLinked) {
+      setToolCallHistory([]);
+      return;
+    }
+
+    let cancelled = false;
+
     const pollWorkflowRuns = async () => {
       try {
         const token = localStorage.getItem("telegram-token");
@@ -264,7 +362,7 @@ export function TelegramChatPanel({
           // Use current workflow if running, otherwise show previous workflow
           const workflowToDisplay = isLoading ? data.current : data.previous;
 
-          if (workflowToDisplay?.toolCalls) {
+          if (workflowToDisplay?.toolCalls && !cancelled) {
             // Convert toolCalls object to array and sort by createdAt descending (newest first)
             type ToolCall = {
               toolName: string;
@@ -313,12 +411,16 @@ export function TelegramChatPanel({
     // Only poll continuously while workflow is active
     if (isLoading) {
       const interval = setInterval(pollWorkflowRuns, 2000);
-      return () => clearInterval(interval);
+      return () => {
+        cancelled = true;
+        clearInterval(interval);
+      };
     }
 
-    // When idle, we've already fetched once above, no need to poll
-    return () => {};
-  }, [isLoading]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoading, hasCalendarLinked]);
 
   const retryLastMessage = useCallback(() => {
     // Find last user message and resubmit it
@@ -570,23 +672,29 @@ export function TelegramChatPanel({
 
       <div className="flex-1 ">
         <div className="flex flex-col gap-2 pb-4">
-          <StatusTickerSection
-            userText={lastUserMessage ?? DEFAULT_TICKER_CONTENT.user}
-            assistantText={
-              isLoading
-                ? ""
-                : lastAssistantMessage ?? DEFAULT_TICKER_CONTENT.assistant
-            }
-            isWorkflowActive={isLoading}
-            hasError={hasLastMessageError}
-            onRetry={retryLastMessage}
-            toolCallHistory={toolCallHistory}
-            onToolClick={(tool) => {
-              setSelectedTool(tool);
-              setIsToolModalOpen(true);
-            }}
-          />
-          <DefaultConfigSquare />
+          {hasCalendarLinked ? (
+            <>
+              <StatusTickerSection
+                userText={lastUserMessage ?? DEFAULT_TICKER_CONTENT.user}
+                assistantText={
+                  isLoading
+                    ? ""
+                    : lastAssistantMessage ?? DEFAULT_TICKER_CONTENT.assistant
+                }
+                isWorkflowActive={isLoading}
+                hasError={hasLastMessageError}
+                onRetry={retryLastMessage}
+                toolCallHistory={toolCallHistory}
+                onToolClick={(tool) => {
+                  setSelectedTool(tool);
+                  setIsToolModalOpen(true);
+                }}
+              />
+              <DefaultConfigSquare />
+            </>
+          ) : (
+            <CalendarLinkGate isLoading={isCheckingCalendarLink} />
+          )}
         </div>
       </div>
 
@@ -720,6 +828,31 @@ function DefaultConfigSquare() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function CalendarLinkGate({ isLoading }: { isLoading: boolean }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/60 bg-muted/40 px-6 py-8 text-center">
+      {isLoading ? (
+        <>
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            Checking for a linked Google Calendar...
+          </p>
+        </>
+      ) : (
+        <>
+          <Calendar className="h-5 w-5 text-muted-foreground" />
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <p>Link Google Calendar to unlock workflows and workplans.</p>
+            <p className="text-xs">
+              Use the Linked Accounts (gear) menu in the header to connect.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }
