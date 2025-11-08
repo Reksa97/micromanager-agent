@@ -172,6 +172,7 @@ ${CONTEXT_USAGE_INSTRUCTIONS}
       ...conversationHistory,
     ]);
   } catch (error) {
+    console.error("[Micromanager Workflow] Error during workflow execution:", error);
     const duration = Date.now() - startTime;
     const inputTokens = estimatedInputTokens;
     const outputTokens = 0;
