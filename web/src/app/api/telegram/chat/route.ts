@@ -5,6 +5,7 @@ import { env } from "@/env";
 import { getUserById } from "@/lib/user";
 import { verifyTelegramServerToken } from "@/lib/telegram/auth";
 import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
+import { updateUserInteractionPatterns } from "@/lib/nudge-system";
 
 export async function POST(req: NextRequest) {
   try {
@@ -63,6 +64,11 @@ export async function POST(req: NextRequest) {
       userId,
       userTier,
     });
+
+    // Update user interaction patterns (for nudge system)
+    await updateUserInteractionPatterns(userId).catch((err) =>
+      console.error("Failed to update interaction patterns:", err)
+    );
 
     // Run micromanager workflow with user's message
     const workflowResult = await runWorkflow({

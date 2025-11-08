@@ -15,7 +15,6 @@ import { MODELS } from "@/lib/utils";
 import { getRecentMessages } from "@/lib/conversations";
 import { McpToolName } from "@/app/mcp/route";
 import { CONTEXT_USAGE_INSTRUCTIONS } from "@/lib/agent/context-schema";
-import { updateUserInteractionPatterns } from "@/lib/nudge-system";
 
 type WorkflowInput = {
   input_as_text: string;
@@ -68,6 +67,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       "update_google_task",
       "get_workplans",
       "update_workplan",
+      "schedule_single_use_workflow",
       "list_github_prs",
       "get_github_pr",
       "get_github_pr_commits",
@@ -150,11 +150,6 @@ ${CONTEXT_USAGE_INSTRUCTIONS}
 
   // Add the current user message at the end
   conversationHistory.push(user(workflow.input_as_text));
-
-  // Update user interaction patterns (for nudge system)
-  await updateUserInteractionPatterns(workflow.user_id).catch((err) =>
-    console.error("Failed to update interaction patterns:", err)
-  );
 
   // Create workflow run document
   await createWorkflowRun({
