@@ -15,7 +15,8 @@ import {
   getUserLanguage,
   type GitHubPRNotification,
 } from "@/lib/i18n/notifications";
-import { getDb } from "@/lib/db";
+import { getMongoClient } from "@/lib/db";
+import { ObjectId } from "mongodb";
 
 // GitHub webhook event types we care about
 type GitHubPRAction =
@@ -141,9 +142,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Check user tier - GitHub integration only for paid users
-    const db = await getDb();
+    const client = await getMongoClient();
+    const db = client.db();
     const usersCollection = db.collection("users");
-    const user = await usersCollection.findOne({ _id: userId });
+    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
 
     if (!user || user.tier !== "paid") {
       console.log(
