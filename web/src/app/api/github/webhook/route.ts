@@ -15,6 +15,7 @@ import {
   getUserLanguage,
   type GitHubPRNotification,
 } from "@/lib/i18n/notifications";
+import { getDb } from "@/lib/db";
 
 // GitHub webhook event types we care about
 type GitHubPRAction =
@@ -137,6 +138,32 @@ export async function POST(req: NextRequest) {
         `[GitHub Webhook] No user mapped for repo ${payload.repository.full_name}`
       );
       return NextResponse.json({ message: "No user mapped" });
+    }
+
+    // Check user tier - GitHub integration only for paid users
+    const db = await getDb();
+    const usersCollection = db.collection("users");
+    const user = await usersCollection.findOne({ _id: userId });
+
+    if (!user || user.tier !== "paid") {
+      console.log(
+        `[GitHub Webhook] User ${userId} is not on paid tier, skipping GitHub integration`
+      );
+
+      // Send WIP message to free tier users
+      await notifyTelegramUser(
+        userId,
+        "🚧 GitHub Integration (Coming Soon)\n\n" +
+        "GitHub PR notifications are currently available for paid tier users only. " +
+        "We're working on enabling custom GitHub connections for all users soon!\n\n" +
+        "Upgrade to paid tier to get instant notifications about your pull requests."
+      ).catch(() => {
+        // Ignore if user doesn't have Telegram
+      });
+
+      return NextResponse.json({
+        message: "GitHub integration requires paid tier"
+      });
     }
 
     const { pull_request: pr, action } = payload;
