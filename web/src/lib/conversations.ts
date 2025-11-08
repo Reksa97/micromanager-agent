@@ -10,7 +10,8 @@ export type MessageSource =
   | "micromanager"
   | "realtime-agent"
   | "daily-check"
-  | "reminder";
+  | "reminder"
+  | "nudge";
 
 export interface StoredMessage {
   _id?: ObjectId;

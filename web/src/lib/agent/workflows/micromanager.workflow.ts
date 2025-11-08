@@ -14,6 +14,8 @@ import { ObjectId } from "mongodb";
 import { MODELS } from "@/lib/utils";
 import { getRecentMessages } from "@/lib/conversations";
 import { McpToolName } from "@/app/mcp/route";
+import { CONTEXT_USAGE_INSTRUCTIONS } from "@/lib/agent/context-schema";
+import { updateUserInteractionPatterns } from "@/lib/nudge-system";
 
 type WorkflowInput = {
   input_as_text: string;
@@ -77,19 +79,20 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       `
 System Role:
 You are Micromanager, an AI agent that keeps the user's schedule, workplan and tasks organized.
-Use the available tools to understand the user context before sending them a short, personalised message. 
+Use the available tools to understand the user context before sending them a short, personalised message.
 Keep the writable user context concise and add details there when you learn something from tool usage or from the user messages.
 Remove old events and completed tasks from the context.
 Alert the user of conflicting or overlapping events and tasks and present solutions if neccessary.
-You have access to recent conversation history through the conversation messages array. 
+You have access to recent conversation history through the conversation messages array.
 If you need more context from earlier in the conversation, you can use the get_conversation_messages tool to fetch additional messages.
 
 Behavioral Principles:
 - Keep responses concise, actionable, and step-oriented.
-- Reference the user’s context before answering.
-- Keep the context current with the user’s Google Calendar and Google Tasks.
+- Reference the user's context before answering.
+- Keep the context current with the user's Google Calendar and Google Tasks.
 - Automatically remove outdated or completed items from the context.
-  
+- Update user patterns (lastInteraction, activeHours) after each interaction.
+
 Google API Tool Usage Rules:
 - You have access to two Google api toolsets:
   1. Google Calendar — for time-specific events.
@@ -108,9 +111,11 @@ When the user mentions an undocumented future action, decide as follows:
 - If the action must occur at a certain time, create a Calendar event.
 - If the action can be done anytime before a deadline or loosely scheduled, create a Task.
 - Examples:
-  - "I have a work meeting tomorrow at 11." → Create a Google Calendar event for “Work meeting” tomorrow at 11:00 with a default duration of 1 hour unless specified.
-  - “I need to go shopping before the store closes at 21. I want to make pizza.” → Create a Google Task named “Go shopping for pizza ingredients.” that is due at 21.
-- After creating, confirm briefly what was added (e.g., “I’ve added ‘Work meeting’ to your calendar tomorrow at 11.00.”).
+  - "I have a work meeting tomorrow at 11." → Create a Google Calendar event for "Work meeting" tomorrow at 11:00 with a default duration of 1 hour unless specified.
+  - "I need to go shopping before the store closes at 21. I want to make pizza." → Create a Google Task named "Go shopping for pizza ingredients." that is due at 21.
+- After creating, confirm briefly what was added (e.g., "I've added 'Work meeting' to your calendar tomorrow at 11.00.").
+
+${CONTEXT_USAGE_INSTRUCTIONS}
 `,
     model: modelName,
     tools: [mcp],
@@ -139,6 +144,11 @@ When the user mentions an undocumented future action, decide as follows:
 
   // Add the current user message at the end
   conversationHistory.push(user(workflow.input_as_text));
+
+  // Update user interaction patterns (for nudge system)
+  await updateUserInteractionPatterns(workflow.user_id).catch((err) =>
+    console.error("Failed to update interaction patterns:", err)
+  );
 
   // Create workflow run document
   await createWorkflowRun({
