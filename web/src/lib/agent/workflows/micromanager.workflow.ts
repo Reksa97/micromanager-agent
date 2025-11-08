@@ -74,6 +74,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
       "get_github_pr_checks",
       "get_github_pr_comments",
       "get_github_pr_files",
+      "comment_on_github_pr",
     ] as McpToolName[],
     requireApproval: "never",
     ...(await getHostedMcpParams(workflow.user_id, sessionId)),
@@ -81,8 +82,7 @@ export const runWorkflow = async (workflow: WorkflowInput) => {
 
   const micromanager = new Agent({
     name: "Micromanager",
-    instructions:
-      `
+    instructions: `
 System Role:
 You are Micromanager, an AI agent that keeps the user's schedule, workplan and tasks organized.
 Use the available tools to understand the user context before sending them a short, personalised message.
@@ -173,7 +173,10 @@ ${CONTEXT_USAGE_INSTRUCTIONS}
       ...conversationHistory,
     ]);
   } catch (error) {
-    console.error("[Micromanager Workflow] Error during workflow execution:", error);
+    console.error(
+      "[Micromanager Workflow] Error during workflow execution:",
+      error
+    );
     const duration = Date.now() - startTime;
     const inputTokens = estimatedInputTokens;
     const outputTokens = 0;

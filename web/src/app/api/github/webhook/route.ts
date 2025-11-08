@@ -85,19 +85,14 @@ function verifyGitHubSignature(
 
 /**
  * Map GitHub repo to userId
- * For now, use environment variable. Later can be per-repo configuration.
+ * TODO: Implement proper repo-to-user mapping in MongoDB
+ * For now, webhooks are disabled - users will interact via MCP tools instead
  */
-function getOwnerUserId(repoFullName: string): string | null {
-  // For demo: map specific repo to user ID
-  const repoOwnerMap: Record<string, string> = {};
-
-  // Check env for default user
-  const defaultUserId = env.GITHUB_DEFAULT_USER_ID;
-  if (defaultUserId) {
-    return defaultUserId;
-  }
-
-  return repoOwnerMap[repoFullName] || null;
+function getOwnerUserId(_repoFullName: string): string | null {
+  // TODO: Query MongoDB to find which user has this repo connected
+  // For now, return null to disable webhook notifications
+  // Users can still use GitHub MCP tools (paid tier only)
+  return null;
 }
 
 export async function POST(req: NextRequest) {

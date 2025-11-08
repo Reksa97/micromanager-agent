@@ -209,6 +209,10 @@ export function getDefaultToolDisplayInfo(
       displayTitle: "💾 Update a Task",
       displayDescription: "",
     },
+    schedule_single_use_workflow: {
+      displayTitle: "🗓️ Schedule follow-up workflow",
+      displayDescription: "",
+    },
   };
 
   return toolMap[actualTool] || {

@@ -5,6 +5,7 @@ import {
   completeTask,
   unlockTask,
 } from "@/lib/scheduled-tasks";
+import type { ScheduledTask } from "@/lib/scheduled-tasks";
 import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
 import {
   sendTelegramMessage,
@@ -106,6 +107,8 @@ export async function GET(req: NextRequest) {
             await executeReminder(task.userId, task.payload);
           } else if (task.taskType === "nudge") {
             await executeNudge(task.userId);
+          } else if (task.taskType === "workflow_single_use") {
+            await executeScheduledWorkflow(task);
           } else {
             console.warn(`[Master Cron] Unknown task type: ${task.taskType}`);
           }
@@ -324,4 +327,61 @@ async function executeNudge(userId: string) {
   await incrementNonResponseCounter(userId);
 
   console.log(`[Nudge] Completed for user ${userId}`);
+}
+
+async function executeScheduledWorkflow(task: ScheduledTask) {
+  const { userId } = task;
+  console.log(
+    `[Scheduled Workflow] Starting single-use workflow for user ${userId}`,
+    task.payload
+  );
+
+  const workflowContext = (
+    typeof task.payload?.workflowContext === "string"
+      ? task.payload.workflowContext
+      : "Follow up on the user's previous request or plan."
+  ).trim();
+
+  const prompt = `Scheduled workflow follow-up:\n\n${workflowContext}\n\nProvide a concise, proactive update or recommendation for the user referencing the context above.`;
+
+  const telegramUser = await getTelegramUserByUserId(userId);
+  if (!telegramUser?.telegramChatId) {
+    console.log(
+      `[Scheduled Workflow] No Telegram chat for user ${userId}, skipping`
+    );
+    await logTaskFailure(
+      userId,
+      "workflow",
+      "No Telegram chat linked for scheduled workflow"
+    );
+    return;
+  }
+
+  const workflowResult = await runWorkflow({
+    input_as_text: prompt,
+    user_id: userId,
+    source: "api",
+    usageTaskType: "workflow",
+    model: MODELS.text,
+  });
+
+  const message = workflowResult.output_text;
+
+  await insertMessage({
+    userId,
+    role: "assistant",
+    content: message,
+    type: "text",
+    source: "micromanager",
+    telegramChatId: telegramUser.telegramChatId,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  await sendTelegramMessage(telegramUser.telegramChatId, message);
+
+  console.log(
+    `[Scheduled Workflow] Completed for user ${userId}`,
+    task._id?.toString()
+  );
 }

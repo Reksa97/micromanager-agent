@@ -8,12 +8,12 @@
 export interface UserPreferences {
   workingHours?: {
     start: string; // e.g., "09:00"
-    end: string;   // e.g., "17:00"
+    end: string; // e.g., "17:00"
   };
   meetingPreferences?: {
     preferredDuration: number; // minutes
-    bufferBefore: number;      // minutes
-    bufferAfter: number;       // minutes
+    bufferBefore: number; // minutes
+    bufferAfter: number; // minutes
   };
   timezone?: string; // e.g., "Europe/Helsinki"
   communicationStyle?: "formal" | "casual" | "playful";
@@ -98,11 +98,12 @@ Store user's work patterns and preferences:
 - meetingPreferences: Default meeting settings
 - timezone, communicationStyle, languagePreference
 
-### 2. patterns (AUTO-MANAGED)
-System tracks:
-- activeHours: When user is most responsive
-- lastInteraction: Last message timestamp
-- consecutiveNonResponses: For progressive nudging
+### 2. patterns
+System tracks user interaction patterns:
+- activeHours: When user is most responsive (update after each interaction)
+- lastInteraction: Last message timestamp (update after each interaction)
+- consecutiveNonResponses: For progressive nudging (system-managed)
+- averageResponseTime: Average time between interactions in hours (optional)
 
 ### 3. importantContext
 Current priorities (keep MINIMAL):
@@ -113,16 +114,20 @@ Current priorities (keep MINIMAL):
 ### 4. notes
 Free-form memory (use sparingly):
 - Max ${CONTEXT_LIMITS.MAX_NOTES} notes
-- Auto-cleanup after ${CONTEXT_LIMITS.NOTE_MAX_AGE_DAYS} days
+- Manually remove notes older than ${CONTEXT_LIMITS.NOTE_MAX_AGE_DAYS} days
 
 ## Context Usage Rules
 
 1. **Read context FIRST** every interaction
 2. **Update patterns** after each user message (lastInteraction, activeHours)
-3. **Keep currentFocus updated** - remove completed projects
-4. **Clean up deadlines** - remove past/completed items
+3. **Keep currentFocus updated** - remove completed projects using contextDeletes
+4. **Clean up deadlines** - remove past/completed items using contextDeletes
 5. **Be selective with notes** - only store truly important insights
-6. **Run cleanup check** if lastCleanup > ${CONTEXT_LIMITS.CLEANUP_INTERVAL_DAYS} days
+6. **Periodic cleanup**: If lastCleanup is missing or > ${CONTEXT_LIMITS.CLEANUP_INTERVAL_DAYS} days old, manually clean up:
+   - Remove old notes (>${CONTEXT_LIMITS.NOTE_MAX_AGE_DAYS} days)
+   - Trim decisions to max ${CONTEXT_LIMITS.MAX_DECISIONS} most recent
+   - Remove completed deadlines
+   - Update lastCleanup timestamp
 
 Example update:
 \`\`\`json
@@ -133,9 +138,21 @@ Example update:
       "value": "2025-11-08T10:30:00Z"
     },
     {
+      "path": "patterns.activeHours",
+      "value": [9, 10, 14, 15, 20]
+    },
+    {
       "path": "importantContext.currentFocus",
       "value": ["Q4 Report", "Team Onboarding"]
+    },
+    {
+      "path": "lastCleanup",
+      "value": "2025-11-08T10:30:00Z"
     }
+  ],
+  "contextDeletes": [
+    "importantContext.upcomingDeadlines.0",
+    "notes.2"
   ]
 }
 \`\`\`

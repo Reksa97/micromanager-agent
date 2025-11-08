@@ -71,6 +71,7 @@ const getToolShortName = (toolName: string): string => {
     "create_google_task_list": "⚒️ Create Task list",
     "insert_google_task": "✅ Insert Task",
     "update_google_task": "💾 Update a Task",
+    schedule_single_use_workflow: "🗓️ Schedule Workflow",
   };
   return toolNameMap[toolName] || `🔧 ${toolName}`;
 };
