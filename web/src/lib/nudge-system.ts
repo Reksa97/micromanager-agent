@@ -62,45 +62,24 @@ export function calculateNudgeLevel(
 
 /**
  * Generate progressive nudge message based on level and context
+ * Now uses i18n support!
  */
-export function generateNudgeMessage(
+export async function generateNudgeMessage(
   nudgeLevel: NudgeLevel,
+  userId: string,
   upcomingEventSummary?: string
-): string {
-  const { level, tone } = nudgeLevel;
+): Promise<string> {
+  const { generateNudgeNotification, getUserLanguage } = await import(
+    "@/lib/i18n/notifications"
+  );
 
-  // Base message templates by level
-  const templates = {
-    5: [
-      upcomingEventSummary ||
-        "Huomenna on kolme meetingia ja kaksi deadlinea. Haluaisitko käydä läpi prioriteetit ja valmistautumisen jokaiselle? Voin auttaa aikataulutuksessa ja muistilistojen tekemisessä.",
-      "Hei! Näen että sinulla on kiireinen viikko edessä. Käydäänkö läpi tulevat tehtävät ja priorisoidaan ne yhdessä?",
-    ],
-    4: [
-      "Hei! Huomenna on kiireinen päivä. Käydäänkö läpi mitä on tulossa?",
-      "Moi! Sinulla on muutama tärkeä juttu tulossa. Haluatko pikakatsauksen?",
-    ],
-    3: [
-      "Psst... huomenna on kyllä aika täynnä. Tsekataan yhdessä? 😊",
-      "Heippa! Onko kaikki hyvin? Muistutetaanko huomisesta? 🗓️",
-    ],
-    2: [
-      "Okei okei, ymmärrän että olet kiireinen... mutta huomenna on TOSI täynnä. Edes pikakatsaus? 🙏",
-      "Hei hei! Olen täällä jos tarvitset apua huomisen kanssa! 👋",
-    ],
-    1: [
-      "Huomenna kiire. Katsotaan?",
-      "Huomenna täynnä. Muista! ⏰",
-    ],
-    0: [
-      "Huomenna. Muista. ⚠️",
-      "Oletko vielä elossa? 😱",
-      "...hups, näyttää siltä että olet hukassa. Huomenna on kiireinen päivä! 🆘",
-    ],
-  };
+  const language = await getUserLanguage(userId);
 
-  const messages = templates[level as keyof typeof templates] || templates[0];
-  return messages[Math.floor(Math.random() * messages.length)];
+  return generateNudgeNotification(
+    nudgeLevel.level,
+    language,
+    upcomingEventSummary
+  );
 }
 
 /**

@@ -12,6 +12,9 @@ const serverSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   CRON_SECRET: z.string().optional(),
+  GITHUB_WEBHOOK_SECRET: z.string().optional(),
+  GITHUB_DEFAULT_USER_ID: z.string().optional(),
+  GITHUB_TOKEN: z.string().optional(),
 });
 
 const resolvedAuthSecret =
@@ -57,4 +60,7 @@ export const env = serverSchema.parse({
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   TELEGRAM_SERVER_SECRET: process.env.TELEGRAM_SERVER_SECRET,
   CRON_SECRET: process.env.CRON_SECRET,
+  GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET,
+  GITHUB_DEFAULT_USER_ID: process.env.GITHUB_DEFAULT_USER_ID,
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN,
 });

@@ -301,9 +301,9 @@ async function executeNudge(userId: string) {
     `[Nudge] User ${userId} nudge level: ${nudgeLevel.level} (${nudgeLevel.tone})`
   );
 
-  // Generate nudge message
+  // Generate nudge message with language support
   // TODO: Could fetch upcoming events summary from calendar
-  const message = generateNudgeMessage(nudgeLevel);
+  const message = await generateNudgeMessage(nudgeLevel, userId);
 
   // Store nudge message
   await insertMessage({
