@@ -2,8 +2,14 @@ import { ObjectId } from "mongodb";
 import { getMongoClient } from "@/lib/db";
 
 const COLLECTION = "scheduled_tasks";
+export const SCHEDULED_TASK_ARCHIVE_COLLECTION = "scheduled_task_archive";
 
-export type TaskType = "daily_check" | "reminder" | "custom";
+export type TaskType =
+  | "daily_check"
+  | "reminder"
+  | "nudge"
+  | "custom"
+  | "workflow_single_use";
 
 export interface ScheduledTask {
   _id?: ObjectId;
@@ -16,6 +22,8 @@ export interface ScheduledTask {
   lockedUntil?: Date; // Optimistic locking to prevent duplicate execution
   createdAt: Date;
   updatedAt: Date;
+  singleUse?: boolean;
+  archiveCollection?: string;
 }
 
 async function getScheduledTasksCollection() {
@@ -121,6 +129,14 @@ export async function completeTask(taskId: ObjectId): Promise<void> {
       }
     );
   } else {
+    const archiveCollectionName =
+      task.archiveCollection ??
+      (task.singleUse ? SCHEDULED_TASK_ARCHIVE_COLLECTION : undefined);
+
+    if (archiveCollectionName && task._id) {
+      await archiveTaskDocument(task, now, archiveCollectionName);
+    }
+
     // One-time task: delete
     await collection.deleteOne({ _id: taskId });
   }
@@ -193,4 +209,76 @@ export async function getUserTasks(userId: string): Promise<ScheduledTask[]> {
 export async function deleteScheduledTask(taskId: ObjectId): Promise<void> {
   const collection = await getScheduledTasksCollection();
   await collection.deleteOne({ _id: taskId });
+}
+
+/**
+ * Schedule progressive nudges for a user
+ * Runs daily to check if user needs a nudge
+ */
+export async function scheduleNudgeCheck(userId: string, hourUTC = 10): Promise<void> {
+  const collection = await getScheduledTasksCollection();
+
+  // Check if user already has a nudge check scheduled
+  const existing = await collection.findOne({
+    userId,
+    taskType: "nudge",
+  });
+
+  if (existing) {
+    console.log(`Nudge check already scheduled for user ${userId}`);
+    return;
+  }
+
+  // Schedule for next occurrence at specified hour UTC
+  const now = new Date();
+  const nextRun = new Date();
+  nextRun.setUTCHours(hourUTC, 0, 0, 0);
+
+  // If today's time has passed, schedule for tomorrow
+  if (nextRun <= now) {
+    nextRun.setDate(nextRun.getDate() + 1);
+  }
+
+  await createScheduledTask({
+    userId,
+    taskType: "nudge",
+    nextRunAt: nextRun,
+    intervalMs: 24 * 60 * 60 * 1000, // 24 hours
+  });
+
+  console.log(`Nudge check scheduled for user ${userId} at ${nextRun.toISOString()}`);
+}
+
+type ArchivedScheduledTask = Omit<ScheduledTask, "_id" | "lockedUntil"> & {
+  originalTaskId: ObjectId;
+  archivedAt: Date;
+  executedAt: Date;
+};
+
+async function archiveTaskDocument(
+  task: ScheduledTask,
+  executedAt: Date,
+  collectionName: string
+) {
+  const client = await getMongoClient();
+  const archiveCollection =
+    client.db().collection<ArchivedScheduledTask>(collectionName);
+
+  if (!task._id) {
+    console.warn(
+      "[ScheduledTasks] Attempted to archive task without _id",
+      task
+    );
+    return;
+  }
+
+  const { _id, lockedUntil, ...rest } = task;
+  const archivedDoc: ArchivedScheduledTask = {
+    ...rest,
+    originalTaskId: _id,
+    archivedAt: executedAt,
+    executedAt,
+  };
+
+  await archiveCollection.insertOne(archivedDoc);
 }

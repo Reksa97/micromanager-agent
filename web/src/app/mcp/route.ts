@@ -54,6 +54,22 @@ import {
   WORKPLAN_DEFAULT_EVENT_LIMIT,
   WORKPLAN_MAX_EVENT_LIMIT,
 } from "@/lib/constants";
+import {
+  listGitHubPRs,
+  getGitHubPR,
+  getGitHubPRCommits,
+  getGitHubCheckRuns,
+  getGitHubPRComments,
+  getGitHubPRFiles,
+  getGitHubPRReviewComments,
+  commentOnGitHubPR,
+} from "@/lib/github-api";
+import {
+  createScheduledTask,
+  SCHEDULED_TASK_ARCHIVE_COLLECTION,
+} from "@/lib/scheduled-tasks";
+import { getUserById } from "@/lib/user";
+import type { UserTier } from "@/types/user";
 
 const formatMcpResponse = (response: string): CallToolResult => ({
   content: [{ type: "text", text: response }],
@@ -72,6 +88,9 @@ const calendarToolHandlers = {
   "get-current-time": GetCurrentTimeHandler,
 };
 
+const MIN_DELAY_STANDARD_MINUTES = 45;
+const MIN_DELAY_PREMIUM_MINUTES = 1;
+
 export type McpToolName =
   | "get_user_context"
   | "update_user_context"
@@ -83,6 +102,14 @@ export type McpToolName =
   | "update_google_task"
   | "get_workplans"
   | "update_workplan"
+  | "list_github_prs"
+  | "get_github_pr"
+  | "get_github_pr_commits"
+  | "get_github_pr_checks"
+  | "get_github_pr_comments"
+  | "get_github_pr_files"
+  | "comment_on_github_pr"
+  | "schedule_single_use_workflow"
   | keyof typeof calendarToolHandlers;
 
 // Scope map for tool authorization
@@ -106,7 +133,15 @@ const TOOL_SCOPE_MAP: Record<McpToolName, string[]> = {
   insert_google_task: ["tasks:write"],
   update_google_task: ["tasks:write"],
   get_workplans: ["read:user-context"],
-  update_workplan: ["write:user-context"]
+  update_workplan: ["write:user-context"],
+  list_github_prs: ["github:read"],
+  get_github_pr: ["github:read"],
+  get_github_pr_commits: ["github:read"],
+  get_github_pr_checks: ["github:read"],
+  get_github_pr_comments: ["github:read"],
+  get_github_pr_files: ["github:read"],
+  comment_on_github_pr: ["github:write"],
+  schedule_single_use_workflow: ["write:user-context"],
 };
 
 const scopesFromAuth = (auth?: AuthInfo): Set<string> =>
@@ -1557,6 +1592,653 @@ const handler = createMcpHandler(
         }
       }
     );
+    server.tool(
+      "schedule_single_use_workflow",
+      "Schedule a single-use Micromanager workflow to run for the user in the future.",
+      {
+        log_message: z
+          .string()
+          .optional()
+          .describe("Human-readable description of what you're doing with this tool"),
+        workflow_context: z
+          .string()
+          .min(1)
+          .describe(
+            "Context or prompt for the future workflow run (e.g., reminders, follow-ups, tasks to revisit)."
+          ),
+        minutes_from_now: z
+          .number()
+          .int()
+          .min(1)
+          .describe("How many minutes from now the workflow should execute."),
+      },
+      async ({ log_message, workflow_context, minutes_from_now }, extra) => {
+        const toolCallId = new ObjectId().toString();
+        const workflowRunId = extra?.authInfo?.extra?.workflowRunId as
+          | string
+          | undefined;
+        const toolName = "schedule_single_use_workflow";
+
+        const displayInfo = log_message
+          ? { displayTitle: log_message, displayDescription: "" }
+          : getDefaultToolDisplayInfo(toolName);
+
+        if (workflowRunId) {
+          await logToolCall(workflowRunId, toolCallId, {
+            toolName,
+            displayTitle: displayInfo.displayTitle,
+            displayDescription: displayInfo.displayDescription,
+            arguments: { workflow_context, minutes_from_now },
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).catch((err) =>
+            console.error("Failed to log tool call start:", err)
+          );
+        }
+
+        const requiredScopes = TOOL_SCOPE_MAP[toolName];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          console.error(`[MCP Auth] Missing required scope for ${toolName}`);
+          const errorMsg = `Access denied: Missing required scope ${requiredScopes.join(", ")}`;
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+          return formatMcpResponse(errorMsg);
+        }
+
+        try {
+          const userId = extra?.authInfo?.clientId;
+          if (!userId) {
+            const errorMsg = "User ID is required";
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+            return formatMcpResponse(errorMsg);
+          }
+
+          const user = await getUserById(userId);
+          const tier = (user?.tier ?? "free") as UserTier;
+          const minDelayMinutes =
+            tier === "paid" || tier === "admin"
+              ? MIN_DELAY_PREMIUM_MINUTES
+              : MIN_DELAY_STANDARD_MINUTES;
+
+          if (minutes_from_now < minDelayMinutes) {
+            const errorMsg = `Scheduled workflows must be at least ${minDelayMinutes} minutes out for your tier.`;
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+            return formatMcpResponse(errorMsg);
+          }
+
+          const workflowContext = workflow_context.trim();
+          if (!workflowContext) {
+            const errorMsg = "Workflow context cannot be empty.";
+            if (workflowRunId) {
+              await logToolCall(workflowRunId, toolCallId, {
+                status: "error",
+                error: errorMsg,
+                updatedAt: new Date(),
+              }).catch((err) =>
+                console.error("Failed to log tool call error:", err)
+              );
+            }
+            return formatMcpResponse(errorMsg);
+          }
+
+          const nextRunAt = new Date(
+            Date.now() + minutes_from_now * 60 * 1000
+          );
+          const scheduledTask = await createScheduledTask({
+            userId,
+            taskType: "workflow_single_use",
+            nextRunAt,
+            payload: {
+              workflowContext,
+              requestedMinutesFromNow: minutes_from_now,
+              requestedAt: new Date().toISOString(),
+              tier,
+              minimumDelayMinutes: minDelayMinutes,
+            },
+            singleUse: true,
+            archiveCollection: SCHEDULED_TASK_ARCHIVE_COLLECTION,
+          });
+
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "success",
+              result: {
+                scheduledTaskId: scheduledTask._id?.toString(),
+                nextRunAt: scheduledTask.nextRunAt.toISOString(),
+              },
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call success:", err)
+            );
+          }
+
+          return formatMcpResponse(
+            `Scheduled workflow for ${scheduledTask.nextRunAt.toISOString()} (${minutes_from_now} minutes from now).`
+          );
+        } catch (error) {
+          console.error("[MCP schedule_single_use_workflow] Error:", error);
+          const errorMsg = `Failed to schedule workflow: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`;
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) =>
+              console.error("Failed to log tool call error:", err)
+            );
+          }
+          return formatMcpResponse(errorMsg);
+        }
+      }
+    );
+
+    // GitHub Tools
+    server.tool(
+      "list_github_prs",
+      "List pull requests for a repository. Only available for paid tier users with GitHub integration configured.",
+      {
+        repoFullName: z.string().describe("Repository full name (e.g., 'owner/repo')"),
+        state: z.enum(["open", "closed", "all"]).optional().describe("Filter by PR state. Default: 'open'"),
+        limit: z.number().optional().describe("Maximum number of PRs to return. Default: 30"),
+        log_message: z.string().optional().describe("Description of what you're doing with this tool")
+      },
+      async ({ repoFullName, state, limit, log_message }, extra) => {
+        const toolCallId = new ObjectId().toString();
+        const workflowRunId = extra?.authInfo?.extra?.workflowRunId as string | undefined;
+        const toolName = "list_github_prs";
+
+        const displayInfo = log_message
+          ? { displayTitle: log_message, displayDescription: "" }
+          : getDefaultToolDisplayInfo(toolName);
+
+        if (workflowRunId) {
+          await logToolCall(workflowRunId, toolCallId, {
+            toolName,
+            displayTitle: displayInfo.displayTitle,
+            displayDescription: displayInfo.displayDescription,
+            arguments: { repoFullName, state, limit },
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).catch((err) => console.error("Failed to log tool call start:", err));
+        }
+
+        const requiredScopes = TOOL_SCOPE_MAP["list_github_prs"];
+        if (!userHasScope(requiredScopes, extra?.authInfo)) {
+          const errorMsg = "Access denied: Missing required scope 'github:read'";
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) => console.error("Failed to log tool call error:", err));
+          }
+          return formatMcpResponse(errorMsg);
+        }
+
+        try {
+          const prs = await listGitHubPRs(repoFullName, { state, limit });
+
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "success",
+              updatedAt: new Date(),
+            }).catch((err) => console.error("Failed to log tool call success:", err));
+          }
+
+          return formatMcpResponse(JSON.stringify(prs, null, 2));
+        } catch (error) {
+          const errorMsg = `Failed to list GitHub PRs: ${error instanceof Error ? error.message : "Unknown error"}`;
+          if (workflowRunId) {
+            await logToolCall(workflowRunId, toolCallId, {
+              status: "error",
+              error: errorMsg,
+              updatedAt: new Date(),
+            }).catch((err) => console.error("Failed to log tool call error:", err));
+          }
+          return formatMcpResponse(errorMsg);
+        }
+      }
+    );
+server.tool(
+  "get_github_pr",
+  "Get detailed information about a specific pull request",
+  {
+    repoFullName: z.string().describe("Repository full name (e.g., 'owner/repo')"),
+    prNumber: z.number().describe("Pull request number"),
+    log_message: z.string().optional().describe("Description of what you're doing with this tool")
+  },
+  async ({ repoFullName, prNumber, log_message }, extra) => {
+    const toolCallId = new ObjectId().toString();
+    const workflowRunId = extra?.authInfo?.extra?.workflowRunId as string | undefined;
+    const toolName = "get_github_pr";
+
+    const displayInfo = log_message
+      ? { displayTitle: log_message, displayDescription: "" }
+      : getDefaultToolDisplayInfo(toolName);
+
+    if (workflowRunId) {
+      await logToolCall(workflowRunId, toolCallId, {
+        toolName,
+        displayTitle: displayInfo.displayTitle,
+        displayDescription: displayInfo.displayDescription,
+        arguments: { repoFullName, prNumber },
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).catch((err) => console.error("Failed to log tool call start:", err));
+    }
+
+    const requiredScopes = TOOL_SCOPE_MAP["get_github_pr"];
+    if (!userHasScope(requiredScopes, extra?.authInfo)) {
+      const errorMsg = "Access denied: Missing required scope 'github:read'";
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+
+    try {
+      const pr = await getGitHubPR(repoFullName, prNumber);
+
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "success",
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call success:", err));
+      }
+
+      return formatMcpResponse(JSON.stringify(pr, null, 2));
+    } catch (error) {
+      const errorMsg = `Failed to get GitHub PR: ${error instanceof Error ? error.message : "Unknown error"}`;
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+  }
+);
+
+server.tool(
+  "get_github_pr_commits",
+  "Get all commits for a pull request",
+  {
+    repoFullName: z.string().describe("Repository full name (e.g., 'owner/repo')"),
+    prNumber: z.number().describe("Pull request number"),
+    log_message: z.string().optional().describe("Description of what you're doing with this tool")
+  },
+  async ({ repoFullName, prNumber, log_message }, extra) => {
+    const toolCallId = new ObjectId().toString();
+    const workflowRunId = extra?.authInfo?.extra?.workflowRunId as string | undefined;
+    const toolName = "get_github_pr_commits";
+
+    const displayInfo = log_message
+      ? { displayTitle: log_message, displayDescription: "" }
+      : getDefaultToolDisplayInfo(toolName);
+
+    if (workflowRunId) {
+      await logToolCall(workflowRunId, toolCallId, {
+        toolName,
+        displayTitle: displayInfo.displayTitle,
+        displayDescription: displayInfo.displayDescription,
+        arguments: { repoFullName, prNumber },
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).catch((err) => console.error("Failed to log tool call start:", err));
+    }
+
+    const requiredScopes = TOOL_SCOPE_MAP["get_github_pr_commits"];
+    if (!userHasScope(requiredScopes, extra?.authInfo)) {
+      const errorMsg = "Access denied: Missing required scope 'github:read'";
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+
+    try {
+      const commits = await getGitHubPRCommits(repoFullName, prNumber);
+
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "success",
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call success:", err));
+      }
+
+      return formatMcpResponse(JSON.stringify(commits, null, 2));
+    } catch (error) {
+      const errorMsg = `Failed to get PR commits: ${error instanceof Error ? error.message : "Unknown error"}`;
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+  }
+);
+
+server.tool(
+  "get_github_pr_checks",
+  "Get check runs and statuses for a pull request's latest commit",
+  {
+    repoFullName: z.string().describe("Repository full name (e.g., 'owner/repo')"),
+    sha: z.string().describe("Commit SHA to check"),
+    log_message: z.string().optional().describe("Description of what you're doing with this tool")
+  },
+  async ({ repoFullName, sha, log_message }, extra) => {
+    const toolCallId = new ObjectId().toString();
+    const workflowRunId = extra?.authInfo?.extra?.workflowRunId as string | undefined;
+    const toolName = "get_github_pr_checks";
+
+    const displayInfo = log_message
+      ? { displayTitle: log_message, displayDescription: "" }
+      : getDefaultToolDisplayInfo(toolName);
+
+    if (workflowRunId) {
+      await logToolCall(workflowRunId, toolCallId, {
+        toolName,
+        displayTitle: displayInfo.displayTitle,
+        displayDescription: displayInfo.displayDescription,
+        arguments: { repoFullName, sha },
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).catch((err) => console.error("Failed to log tool call start:", err));
+    }
+
+    const requiredScopes = TOOL_SCOPE_MAP["get_github_pr_checks"];
+    if (!userHasScope(requiredScopes, extra?.authInfo)) {
+      const errorMsg = "Access denied: Missing required scope 'github:read'";
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+
+    try {
+      const checks = await getGitHubCheckRuns(repoFullName, sha);
+
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "success",
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call success:", err));
+      }
+
+      return formatMcpResponse(JSON.stringify(checks, null, 2));
+    } catch (error) {
+      const errorMsg = `Failed to get PR checks: ${error instanceof Error ? error.message : "Unknown error"}`;
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+  }
+);
+
+server.tool(
+  "get_github_pr_comments",
+  "Get all comments (issue + review comments) for a pull request",
+  {
+    repoFullName: z.string().describe("Repository full name (e.g., 'owner/repo')"),
+    prNumber: z.number().describe("Pull request number"),
+    log_message: z.string().optional().describe("Description of what you're doing with this tool")
+  },
+  async ({ repoFullName, prNumber, log_message }, extra) => {
+    const toolCallId = new ObjectId().toString();
+    const workflowRunId = extra?.authInfo?.extra?.workflowRunId as string | undefined;
+    const toolName = "get_github_pr_comments";
+
+    const displayInfo = log_message
+      ? { displayTitle: log_message, displayDescription: "" }
+      : getDefaultToolDisplayInfo(toolName);
+
+    if (workflowRunId) {
+      await logToolCall(workflowRunId, toolCallId, {
+        toolName,
+        displayTitle: displayInfo.displayTitle,
+        displayDescription: displayInfo.displayDescription,
+        arguments: { repoFullName, prNumber },
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).catch((err) => console.error("Failed to log tool call start:", err));
+    }
+
+    const requiredScopes = TOOL_SCOPE_MAP["get_github_pr_comments"];
+    if (!userHasScope(requiredScopes, extra?.authInfo)) {
+      const errorMsg = "Access denied: Missing required scope 'github:read'";
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+
+    try {
+      // Get both issue comments and review comments
+      const [issueComments, reviewComments] = await Promise.all([
+        getGitHubPRComments(repoFullName, prNumber),
+        getGitHubPRReviewComments(repoFullName, prNumber)
+      ]);
+
+      const allComments = {
+        issueComments,
+        reviewComments,
+        total: issueComments.length + reviewComments.length
+      };
+
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "success",
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call success:", err));
+      }
+
+      return formatMcpResponse(JSON.stringify(allComments, null, 2));
+    } catch (error) {
+      const errorMsg = `Failed to get PR comments: ${error instanceof Error ? error.message : "Unknown error"}`;
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+  }
+);
+
+server.tool(
+  "get_github_pr_files",
+  "Get file changes (additions, deletions, modifications) for a pull request",
+  {
+    repoFullName: z.string().describe("Repository full name (e.g., 'owner/repo')"),
+    prNumber: z.number().describe("Pull request number"),
+    includePatch: z.boolean().optional().describe("Include code diffs (patch). Default: false"),
+    log_message: z.string().optional().describe("Description of what you're doing with this tool")
+  },
+  async ({ repoFullName, prNumber, includePatch, log_message }, extra) => {
+    const toolCallId = new ObjectId().toString();
+    const workflowRunId = extra?.authInfo?.extra?.workflowRunId as string | undefined;
+    const toolName = "get_github_pr_files";
+
+    const displayInfo = log_message
+      ? { displayTitle: log_message, displayDescription: "" }
+      : getDefaultToolDisplayInfo(toolName);
+
+    if (workflowRunId) {
+      await logToolCall(workflowRunId, toolCallId, {
+        toolName,
+        displayTitle: displayInfo.displayTitle,
+        displayDescription: displayInfo.displayDescription,
+        arguments: { repoFullName, prNumber, includePatch },
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).catch((err) => console.error("Failed to log tool call start:", err));
+    }
+
+    const requiredScopes = TOOL_SCOPE_MAP["get_github_pr_files"];
+    if (!userHasScope(requiredScopes, extra?.authInfo)) {
+      const errorMsg = "Access denied: Missing required scope 'github:read'";
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+
+    try {
+      const files = await getGitHubPRFiles(repoFullName, prNumber, includePatch);
+
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "success",
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call success:", err));
+      }
+
+      return formatMcpResponse(JSON.stringify(files, null, 2));
+    } catch (error) {
+      const errorMsg = `Failed to get PR files: ${error instanceof Error ? error.message : "Unknown error"}`;
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+  }
+);
+
+server.tool(
+  "comment_on_github_pr",
+  "Post a comment on a pull request",
+  {
+    repoFullName: z.string().describe("Repository full name (e.g., 'owner/repo')"),
+    prNumber: z.number().describe("Pull request number"),
+    body: z.string().describe("Comment text to post"),
+    log_message: z.string().optional().describe("Description of what you're doing with this tool")
+  },
+  async ({ repoFullName, prNumber, body, log_message }, extra) => {
+    const toolCallId = new ObjectId().toString();
+    const workflowRunId = extra?.authInfo?.extra?.workflowRunId as string | undefined;
+    const toolName = "comment_on_github_pr";
+
+    const displayInfo = log_message
+      ? { displayTitle: log_message, displayDescription: "" }
+      : getDefaultToolDisplayInfo(toolName);
+
+    if (workflowRunId) {
+      await logToolCall(workflowRunId, toolCallId, {
+        toolName,
+        displayTitle: displayInfo.displayTitle,
+        displayDescription: displayInfo.displayDescription,
+        arguments: { repoFullName, prNumber, body },
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).catch((err) => console.error("Failed to log tool call start:", err));
+    }
+
+    const requiredScopes = TOOL_SCOPE_MAP["comment_on_github_pr"];
+    if (!userHasScope(requiredScopes, extra?.authInfo)) {
+      const errorMsg = "Access denied: Missing required scope 'github:write'";
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+
+    try {
+      const comment = await commentOnGitHubPR(repoFullName, prNumber, body);
+
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "success",
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call success:", err));
+      }
+
+      return formatMcpResponse(JSON.stringify(comment, null, 2));
+    } catch (error) {
+      const errorMsg = `Failed to comment on PR: ${error instanceof Error ? error.message : "Unknown error"}`;
+      if (workflowRunId) {
+        await logToolCall(workflowRunId, toolCallId, {
+          status: "error",
+          error: errorMsg,
+          updatedAt: new Date(),
+        }).catch((err) => console.error("Failed to log tool call error:", err));
+      }
+      return formatMcpResponse(errorMsg);
+    }
+  }
+);
     ToolRegistry.getToolsWithSchemas().forEach((tool) => {
       server.tool(
         tool.name,
@@ -1739,6 +2421,27 @@ const handler = createMcpHandler(
         update_workplan: {
           description: "Update or regenerate a workplan for a specific event (requires: write:user-context)"
         },
+        list_github_prs: {
+          description: "List pull requests for a repository (requires: github:read)"
+        },
+        get_github_pr: {
+          description: "Get detailed information about a specific pull request (requires: github:read)"
+        },
+        get_github_pr_commits: {
+          description: "Get all commits for a pull request (requires: github:read)"
+        },
+        get_github_pr_checks: {
+          description: "Get check runs and statuses for a pull request's latest commit (requires: github:read)"
+        },
+        get_github_pr_comments: {
+          description: "Get all comments (issue + review comments) for a pull request (requires: github:read)"
+        },
+        get_github_pr_files: {
+          description: "Get file changes for a pull request (requires: github:read)"
+        },
+        comment_on_github_pr: {
+          description: "Post a comment on a pull request (requires: github:write)"
+        },
         ...ToolRegistry.getToolsWithSchemas().reduce((rest, tool) => {
           const scopes = TOOL_SCOPE_MAP[tool.name] || [];
           const scopeStr =
@@ -1804,6 +2507,8 @@ const verifyToken = async (
       "calendar:write",
       "tasks:read",
       "tasks:write",
+      "github:read",
+      "github:write",
     ];
 
     return {
@@ -1839,6 +2544,11 @@ const verifyToken = async (
     if (payload.googleAccessToken) {
       userScopes.push("calendar:read", "calendar:write", "tasks:read", "tasks:write");
     }
+
+    // Paid users get GitHub access
+    // Note: GitHub integration tier check is handled at webhook level
+    // Here we grant the scope to allow MCP tool calls
+    userScopes.push("github:read", "github:write");
   }
 
   console.log("[MCP Auth] Verified token", {

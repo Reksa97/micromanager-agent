@@ -5,6 +5,7 @@ import {
   completeTask,
   unlockTask,
 } from "@/lib/scheduled-tasks";
+import type { ScheduledTask } from "@/lib/scheduled-tasks";
 import { runWorkflow } from "@/lib/agent/workflows/micromanager.workflow";
 import {
   sendTelegramMessage,
@@ -15,6 +16,15 @@ import { env } from "@/env";
 import { logUsage } from "@/lib/usage-tracking";
 import type { UsageLog } from "@/lib/usage-tracking";
 import { MODELS } from "@/lib/utils";
+import {
+  getHoursSinceLastInteraction,
+  calculateNudgeLevel,
+  generateNudgeMessage,
+  shouldNudge,
+  incrementNonResponseCounter,
+} from "@/lib/nudge-system";
+import { getUserContextDocument } from "@/lib/user-context";
+import type { StructuredUserContext } from "@/lib/agent/context-schema";
 
 const TASK_FAILURE_MODEL = MODELS.text;
 
@@ -95,6 +105,10 @@ export async function GET(req: NextRequest) {
             await executeDailyCheck(task.userId);
           } else if (task.taskType === "reminder") {
             await executeReminder(task.userId, task.payload);
+          } else if (task.taskType === "nudge") {
+            await executeNudge(task.userId);
+          } else if (task.taskType === "workflow_single_use") {
+            await executeScheduledWorkflow(task);
           } else {
             console.warn(`[Master Cron] Unknown task type: ${task.taskType}`);
           }
@@ -252,4 +266,122 @@ async function executeReminder(
   await sendTelegramMessage(telegramUser.telegramChatId, message);
 
   console.log(`[Reminder] Completed for user ${userId}`);
+}
+
+/**
+ * Execute nudge: send progressive reminder if user hasn't responded
+ */
+async function executeNudge(userId: string) {
+  console.log(`[Nudge] Starting for user ${userId}`);
+
+  // Get Telegram user
+  const telegramUser = await getTelegramUserByUserId(userId);
+  if (!telegramUser?.telegramChatId) {
+    console.log(`[Nudge] No Telegram chat for user ${userId}, skipping`);
+    return;
+  }
+
+  // Get hours since last interaction
+  const hoursSinceLastInteraction = await getHoursSinceLastInteraction(userId);
+  console.log(
+    `[Nudge] User ${userId} last interaction: ${hoursSinceLastInteraction.toFixed(1)}h ago`
+  );
+
+  // Get user context for active hours
+  const contextDoc = await getUserContextDocument(userId);
+  const context = contextDoc.data as StructuredUserContext;
+  const activeHours = context?.patterns?.activeHours;
+
+  // Check if we should nudge
+  if (!shouldNudge(hoursSinceLastInteraction, activeHours)) {
+    console.log(`[Nudge] User ${userId} does not need nudge yet, skipping`);
+    return;
+  }
+
+  // Calculate nudge level
+  const nudgeLevel = calculateNudgeLevel(hoursSinceLastInteraction);
+  console.log(
+    `[Nudge] User ${userId} nudge level: ${nudgeLevel.level} (${nudgeLevel.tone})`
+  );
+
+  // Generate nudge message with language support
+  // TODO: Could fetch upcoming events summary from calendar
+  const message = await generateNudgeMessage(nudgeLevel, userId);
+
+  // Store nudge message
+  await insertMessage({
+    userId,
+    role: "assistant",
+    content: message,
+    type: "text",
+    source: "nudge",
+    telegramChatId: telegramUser.telegramChatId,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  // Send via Telegram
+  await sendTelegramMessage(telegramUser.telegramChatId, message);
+
+  // Increment non-response counter
+  await incrementNonResponseCounter(userId);
+
+  console.log(`[Nudge] Completed for user ${userId}`);
+}
+
+async function executeScheduledWorkflow(task: ScheduledTask) {
+  const { userId } = task;
+  console.log(
+    `[Scheduled Workflow] Starting single-use workflow for user ${userId}`,
+    task.payload
+  );
+
+  const workflowContext = (
+    typeof task.payload?.workflowContext === "string"
+      ? task.payload.workflowContext
+      : "Follow up on the user's previous request or plan."
+  ).trim();
+
+  const prompt = `Scheduled workflow follow-up:\n\n${workflowContext}\n\nProvide a concise, proactive update or recommendation for the user referencing the context above.`;
+
+  const telegramUser = await getTelegramUserByUserId(userId);
+  if (!telegramUser?.telegramChatId) {
+    console.log(
+      `[Scheduled Workflow] No Telegram chat for user ${userId}, skipping`
+    );
+    await logTaskFailure(
+      userId,
+      "workflow",
+      "No Telegram chat linked for scheduled workflow"
+    );
+    return;
+  }
+
+  const workflowResult = await runWorkflow({
+    input_as_text: prompt,
+    user_id: userId,
+    source: "api",
+    usageTaskType: "workflow",
+    model: MODELS.text,
+  });
+
+  const message = workflowResult.output_text;
+
+  await insertMessage({
+    userId,
+    role: "assistant",
+    content: message,
+    type: "text",
+    source: "micromanager",
+    telegramChatId: telegramUser.telegramChatId,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  await sendTelegramMessage(telegramUser.telegramChatId, message);
+
+  console.log(
+    `[Scheduled Workflow] Completed for user ${userId}`,
+    task._id?.toString()
+  );
 }
