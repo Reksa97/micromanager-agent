@@ -90,7 +90,7 @@ export async function listGitHubPRs(
 
   try {
     const token = await getGitHubAppToken(repoFullName);
-    const cmd = `gh api repos/${repoFullName}/pulls --jq '.[]' -F state=${state} -F per_page=${limit}`;
+    const cmd = `gh api repos/${repoFullName}/pulls -F state=${state} -F per_page=${limit}`;
     const { stdout } = await execAsync(cmd, {
       maxBuffer: 1024 * 1024 * 10, // 10MB buffer
       env: { ...process.env, GH_TOKEN: token }
@@ -100,11 +100,9 @@ export async function listGitHubPRs(
       return [];
     }
 
-    // Split by lines and parse each JSON object
-    const lines = stdout.trim().split('\n');
-    const prs = lines.map(line => JSON.parse(line));
-
-    return prs;
+    // Parse JSON array directly
+    const prs = JSON.parse(stdout);
+    return Array.isArray(prs) ? prs : [];
   } catch (error) {
     console.error('[GitHub API] Error listing PRs:', error);
     throw new Error(`Failed to list PRs: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -141,7 +139,7 @@ export async function getGitHubPRCommits(
 ): Promise<GitHubPRCommit[]> {
   try {
     const token = await getGitHubAppToken(repoFullName);
-    const cmd = `gh api repos/${repoFullName}/pulls/${prNumber}/commits --jq '.[]'`;
+    const cmd = `gh api repos/${repoFullName}/pulls/${prNumber}/commits`;
     const { stdout } = await execAsync(cmd, {
       maxBuffer: 1024 * 1024 * 10,
       env: { ...process.env, GH_TOKEN: token }
@@ -151,8 +149,8 @@ export async function getGitHubPRCommits(
       return [];
     }
 
-    const lines = stdout.trim().split('\n');
-    return lines.map(line => JSON.parse(line));
+    const commits = JSON.parse(stdout);
+    return Array.isArray(commits) ? commits : [];
   } catch (error) {
     console.error(`[GitHub API] Error getting PR #${prNumber} commits:`, error);
     throw new Error(`Failed to get PR commits: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -168,7 +166,7 @@ export async function getGitHubCheckRuns(
 ): Promise<GitHubCheckRun[]> {
   try {
     const token = await getGitHubAppToken(repoFullName);
-    const cmd = `gh api repos/${repoFullName}/commits/${sha}/check-runs --jq '.check_runs[]'`;
+    const cmd = `gh api repos/${repoFullName}/commits/${sha}/check-runs`;
     const { stdout } = await execAsync(cmd, {
       maxBuffer: 1024 * 1024 * 10,
       env: { ...process.env, GH_TOKEN: token }
@@ -178,8 +176,8 @@ export async function getGitHubCheckRuns(
       return [];
     }
 
-    const lines = stdout.trim().split('\n');
-    return lines.map(line => JSON.parse(line));
+    const data = JSON.parse(stdout);
+    return Array.isArray(data.check_runs) ? data.check_runs : [];
   } catch (error) {
     console.error(`[GitHub API] Error getting check runs for ${sha}:`, error);
     throw new Error(`Failed to get check runs: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -195,7 +193,7 @@ export async function getGitHubPRComments(
 ): Promise<GitHubPRComment[]> {
   try {
     const token = await getGitHubAppToken(repoFullName);
-    const cmd = `gh api repos/${repoFullName}/issues/${prNumber}/comments --jq '.[]'`;
+    const cmd = `gh api repos/${repoFullName}/issues/${prNumber}/comments`;
     const { stdout } = await execAsync(cmd, {
       maxBuffer: 1024 * 1024 * 10,
       env: { ...process.env, GH_TOKEN: token }
@@ -205,8 +203,8 @@ export async function getGitHubPRComments(
       return [];
     }
 
-    const lines = stdout.trim().split('\n');
-    return lines.map(line => JSON.parse(line));
+    const comments = JSON.parse(stdout);
+    return Array.isArray(comments) ? comments : [];
   } catch (error) {
     console.error(`[GitHub API] Error getting PR #${prNumber} comments:`, error);
     throw new Error(`Failed to get PR comments: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -223,7 +221,7 @@ export async function getGitHubPRFiles(
 ): Promise<GitHubPRFile[]> {
   try {
     const token = await getGitHubAppToken(repoFullName);
-    const cmd = `gh api repos/${repoFullName}/pulls/${prNumber}/files --jq '.[]'`;
+    const cmd = `gh api repos/${repoFullName}/pulls/${prNumber}/files`;
     const { stdout } = await execAsync(cmd, {
       maxBuffer: 1024 * 1024 * 20, // 20MB for large diffs
       env: { ...process.env, GH_TOKEN: token }
@@ -233,15 +231,15 @@ export async function getGitHubPRFiles(
       return [];
     }
 
-    const lines = stdout.trim().split('\n');
-    const files = lines.map(line => JSON.parse(line));
+    const files = JSON.parse(stdout);
+    const fileArray = Array.isArray(files) ? files : [];
 
     // Optionally remove patch to reduce size
     if (!includePatch) {
-      files.forEach(file => delete file.patch);
+      fileArray.forEach(file => delete file.patch);
     }
 
-    return files;
+    return fileArray;
   } catch (error) {
     console.error(`[GitHub API] Error getting PR #${prNumber} files:`, error);
     throw new Error(`Failed to get PR files: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -257,7 +255,7 @@ export async function getGitHubPRReviewComments(
 ): Promise<GitHubPRComment[]> {
   try {
     const token = await getGitHubAppToken(repoFullName);
-    const cmd = `gh api repos/${repoFullName}/pulls/${prNumber}/comments --jq '.[]'`;
+    const cmd = `gh api repos/${repoFullName}/pulls/${prNumber}/comments`;
     const { stdout } = await execAsync(cmd, {
       maxBuffer: 1024 * 1024 * 10,
       env: { ...process.env, GH_TOKEN: token }
@@ -267,8 +265,8 @@ export async function getGitHubPRReviewComments(
       return [];
     }
 
-    const lines = stdout.trim().split('\n');
-    return lines.map(line => JSON.parse(line));
+    const comments = JSON.parse(stdout);
+    return Array.isArray(comments) ? comments : [];
   } catch (error) {
     console.error(`[GitHub API] Error getting PR #${prNumber} review comments:`, error);
     throw new Error(`Failed to get PR review comments: ${error instanceof Error ? error.message : 'Unknown error'}`);
