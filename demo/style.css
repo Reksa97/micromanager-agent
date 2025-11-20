@@ -1,0 +1,793 @@
+:root {
+    --bg-color: #000000;
+    --text-color: #ffffff;
+    --accent-color: #ffffff;
+    --font-main: 'EB Garamond', serif;
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-blur: 20px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: var(--font-main);
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+body.demo-mode {
+    overflow: hidden;
+}
+
+/* Background Blobs */
+.bg-blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.4;
+    z-index: 0;
+    animation: float 20s infinite ease-in-out;
+}
+
+.blob-1 {
+    top: -10%;
+    left: -10%;
+    width: 50vw;
+    height: 50vw;
+    background: radial-gradient(circle, #2a2a2a, transparent);
+    animation-delay: 0s;
+}
+
+.blob-2 {
+    bottom: -20%;
+    right: -10%;
+    width: 60vw;
+    height: 60vw;
+    background: radial-gradient(circle, #1a1a1a, transparent);
+    animation-delay: -5s;
+}
+
+.blob-3 {
+    top: 40%;
+    left: 40%;
+    width: 30vw;
+    height: 30vw;
+    background: radial-gradient(circle, #333333, transparent);
+    opacity: 0.2;
+    animation-delay: -10s;
+}
+
+.noise-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MDAiIGhlaWdodD0iNTAwIj48ZmlsdGVyIGlkPSJub2lzZSI+PGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuNjUiIG51bU9jdGF2ZXM9IjMiIHN0aXRjaFRpbGVzPSJzdGl0Y2giLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgjbm9pc2UpIiBvcGFjaXR5PSIwLjAzIi8+PC9zdmc+');
+    pointer-events: none;
+    z-index: 1;
+}
+
+@keyframes float {
+    0%, 100% { transform: translate(0, 0); }
+    33% { transform: translate(30px, -50px); }
+    66% { transform: translate(-20px, 20px); }
+}
+
+/* Autoplay Overlay */
+#autoplay-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(20px);
+    z-index: 3000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    animation: fadeIn 0.5s ease;
+}
+
+#autoplay-overlay.fade-out {
+    animation: fadeOut 0.3s ease forwards;
+}
+
+.autoplay-content {
+    text-align: center;
+    transition: transform 0.3s ease;
+}
+
+#autoplay-overlay:hover .autoplay-content {
+    transform: scale(1.05);
+}
+
+.autoplay-icon {
+    font-size: 5rem;
+    margin-bottom: 1rem;
+    animation: pulse 2s ease infinite;
+}
+
+.autoplay-text {
+    font-size: 2rem;
+    font-weight: 400;
+    opacity: 0.9;
+    font-family: var(--font-main);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+}
+
+/* Scroll Container */
+#scroll-container {
+    width: 100%;
+    height: 100vh;
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+}
+
+body.demo-mode #scroll-container {
+    overflow: hidden;
+    scroll-snap-type: none;
+}
+
+/* Sections */
+section {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    scroll-snap-align: start;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    overflow: hidden;
+}
+
+/* --- Layouts --- */
+
+/* Center */
+section.layout-center {
+    flex-direction: column;
+    justify-content: flex-end; /* Push text down to avoid logo overlap */
+    padding: 2rem 0 4rem 0; /* Add extra bottom padding */
+}
+section.layout-center .text-wrapper {
+    align-items: center;
+    text-align: center;
+    flex: 0 0 auto;
+    width: 100%;
+    padding: 1rem; /* Further reduce padding */
+    z-index: 20;
+}
+/* Ensure asset wrapper doesn't get crushed but allows shrinking */
+section.layout-center .asset-wrapper {
+    flex: 1 1 auto;
+    min-height: 0; /* Crucial for flex containers to shrink items */
+    width: 100%;
+    padding: 1rem;
+}
+
+/* Closing Scene - Lower Positioning */
+section.layout-closing {
+    justify-content: flex-end; /* Push content to bottom */
+    padding-bottom: 6rem; /* More bottom padding to move content down */
+    padding-top: 0; /* Remove top padding */
+}
+
+/* Split */
+section.layout-split-right {
+    flex-direction: row;
+}
+section.layout-split-left {
+    flex-direction: row-reverse;
+}
+section.layout-split-right .text-wrapper,
+section.layout-split-left .text-wrapper {
+    align-items: flex-start;
+    text-align: left;
+    padding-left: 6rem; /* More left margin for better spacing */
+}
+
+/* Hero */
+section.layout-hero .asset-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    z-index: 0;
+}
+section.layout-hero .text-wrapper {
+    position: absolute;
+    bottom: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+    height: auto;
+    width: auto;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 2rem 4rem;
+    text-align: center;
+}
+section.layout-hero video {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 0;
+}
+
+/* Intro Chaos */
+section.layout-intro-chaos .asset-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    z-index: 0;
+    display: flex; /* Use flex for side-by-side */
+    gap: 0;
+}
+section.layout-intro-chaos video {
+    width: 50vw; /* Exactly 50% width */
+    height: 100vh; /* Full height */
+    object-fit: cover;
+    border-radius: 0;
+    opacity: 0.8;
+    filter: grayscale(0.2) contrast(1.1);
+}
+section.layout-intro-chaos .blur-overlay {
+    display: none; /* Remove blur as requested */
+}
+section.layout-intro-chaos .text-wrapper {
+    position: absolute;
+    z-index: 20;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(10px);
+    padding: 3rem;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Intro Zoom (Scene 2) */
+section.layout-intro-zoom {
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+}
+section.layout-intro-zoom .asset-wrapper {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    padding: 0; /* Remove padding to allow full bleed */
+}
+section.layout-intro-zoom video {
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    transform: scale(1); /* Start at normal scale */
+    transition: transform 15s linear !important; /* Continuous, longer transition */
+    z-index: 10;
+    opacity: 0; /* Start hidden */
+}
+
+section.layout-intro-zoom.active video {
+    opacity: 1; /* Fade in when active */
+    transition: opacity 1s ease, transform 15s linear !important;
+}
+section.layout-intro-zoom.zooming video {
+    transform: scale(2); /* Deeper zoom */
+}
+section.layout-intro-zoom .text-wrapper {
+    position: absolute;
+    bottom: 0%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2001; /* Higher than narrator logo (2000) */
+    opacity: 0;
+    transition: opacity 1s ease;
+    /* Ensure text doesn't overlap with center logo */
+    pointer-events: none;
+    width: 100%;
+    text-align: center;
+}
+section.layout-intro-zoom.show-text .text-wrapper {
+    opacity: 1;
+}
+section.layout-intro-zoom .text-wrapper .subtitle {
+    color: #fff;
+    font-weight: 500;
+    opacity: 1;
+}
+
+/* Intro Triad */
+section.layout-intro-triad {
+    flex-direction: column;
+    padding-top: 2rem; /* Small margin above trinity */
+    justify-content: flex-start; /* Align to top to avoid bottom clipping if needed */
+}
+section.layout-intro-triad .asset-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2rem;
+    width: 90%;
+    height: auto; /* Let content dictate height */
+    flex: 0 1 auto; /* Don't expand to fill all space */
+    max-height: 60vh; /* Allow more space for assets while leaving room for text */
+    align-items: center;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+section.layout-intro-triad video,
+section.layout-intro-triad .image-overlay {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+section.layout-intro-triad .text-wrapper {
+    flex: 0 0 auto;
+    height: auto; /* Override global height: 100% */
+    margin-top: 1rem;
+    text-align: center;
+    padding: 1rem; /* Reduce padding to ensure visibility */
+}
+
+/* Roadmap */
+section.layout-roadmap {
+    flex-direction: column;
+}
+section.layout-roadmap .text-wrapper {
+    width: 100%;
+    max-width: 1200px;
+    text-align: center;
+    justify-content: flex-start; /* Move content to top */
+    padding-top: 4rem; /* Move text higher */
+}
+
+/* --- Typography --- */
+h1 {
+    font-size: 6rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
+    letter-spacing: -0.03em;
+    background: linear-gradient(to bottom, #fff, #888);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1.3; /* Fix clipping */
+    padding-bottom: 15px; /* Fix clipping */
+}
+
+h2 {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    font-weight: 700;
+    line-height: 1.3; /* Fix clipping */
+    padding-bottom: 15px; /* Fix clipping */
+    background: linear-gradient(to right, #fff, #aaa);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+p {
+    font-size: 2rem;
+    font-weight: 400;
+    opacity: 0.9;
+    line-height: 1.5;
+    max-width: 800px;
+}
+
+.subtitle {
+    font-size: 2rem;
+    font-style: italic;
+    color: rgba(255,255,255,0.7);
+}
+
+/* --- Assets --- */
+.asset-wrapper {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    padding: 2rem;
+}
+
+.text-wrapper {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 4rem;
+    z-index: 20;
+}
+
+video, .image-overlay {
+    max-width: 90%;
+    max-height: 90%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 16px;
+    opacity: 0;
+    transform: scale(0.95);
+    transition: all 1s ease;
+}
+
+.image-overlay {
+    width: 100%;
+    height: 100%;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/* Logo Zoom Animation */
+.logo-zoom {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+    transition: all 2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 50;
+    width: 400px;
+    height: auto;
+}
+
+section.active .logo-zoom.animate {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+}
+
+/* Animations */
+section.active video, 
+section.active .image-overlay {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.text-content {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: all 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+section.active .text-content {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Roadmap List */
+.roadmap-list {
+    list-style: none;
+    font-size: 2.2rem;
+    text-align: left;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-top: 1.5rem;
+}
+
+.roadmap-list li {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    display: flex;
+    align-items: center;
+    background: rgba(255,255,255,0.05);
+    padding: 1.5rem 2rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.roadmap-list li::before {
+    content: '✦';
+    margin-right: 15px;
+    color: #fff;
+}
+
+section.active .roadmap-list li {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+section.active .roadmap-list li:nth-child(1) { transition-delay: 0.2s; }
+section.active .roadmap-list li:nth-child(2) { transition-delay: 0.4s; }
+section.active .roadmap-list li:nth-child(3) { transition-delay: 0.6s; }
+section.active .roadmap-list li:nth-child(4) { transition-delay: 0.8s; }
+
+/* Narrator Logo */
+#narrator-logo {
+    position: fixed;
+    z-index: 2000;
+    width: 80px;
+    height: 80px;
+    transition: all 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+    /* Default hidden position */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+    display: block; /* Ensure it's always in the DOM for transitions */
+}
+
+#narrator-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 10px 20px rgba(0,0,0,0.5));
+}
+
+#narrator-logo.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+/* Narrator Positions */
+#narrator-logo.pos-center-zoom {
+    top: 22%; /* Moved down for better positioning */
+    left: 50%;
+    width: 200px;
+    height: 200px;
+    transform: translate(-50%, -50%) scale(1);
+    /* Slow entry animation handled by JS class addition or specific keyframe if needed,
+       but transition here works for movement. For initial appearance, we might want a slower transition. */
+}
+
+#narrator-logo.pos-upper-center {
+    top: 42%; /* Adjusted to be slightly lower than 40% but still above center */
+    left: 50%;
+    width: 200px;
+    height: 200px;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+#narrator-logo.pos-bottom-center {
+    top: auto;
+    bottom: 50px;
+    left: 50%;
+    right: auto;
+    width: 80px;
+    height: 80px;
+    transform: translate(-50%, 0) scale(1);
+}
+
+/* Special slow transition for the initial zoom in */
+#narrator-logo.slow-entry {
+    transition: transform 4s ease-out, opacity 4s ease-out;
+}
+
+#narrator-logo.pos-bottom-right {
+    top: auto;
+    bottom: 80px; /* Increased margin */
+    left: auto;
+    right: 80px; /* Increased margin */
+    width: 80px;
+    height: 80px;
+    transform: translate(0, 0) scale(1);
+}
+
+#narrator-logo.pos-top-left {
+    top: 80px; /* Increased margin */
+    left: 80px; /* Increased margin */
+    bottom: auto;
+    right: auto;
+    width: 60px;
+    height: 60px;
+    transform: translate(0, 0) scale(1);
+}
+
+#narrator-logo.pos-top-right {
+    top: 80px; /* Increased margin */
+    left: auto; /* Increased margin */
+    bottom: auto;
+    right: 80px;
+    width: 60px;
+    height: 60px;
+    transform: translate(0, 0) scale(1);
+}
+
+#narrator-logo.pos-bottom-left {
+    top: auto;
+    bottom: 80px; /* Increased margin */
+    left: 80px; /* Increased margin */
+    right: auto;
+    width: 80px;
+    height: 80px;
+    transform: translate(0, 0) scale(1);
+}
+
+/* Speech Bubble */
+.speech-bubble {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.95);
+    color: #000;
+    padding: 1rem 1.5rem;
+    border-radius: 20px;
+    border-bottom-left-radius: 4px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    width: max-content;
+    max-width: 250px;
+    
+    /* Positioning relative to logo */
+    top: -20px; 
+    left: 100%; /* To the right of the logo */
+    margin-left: 20px;
+    
+    opacity: 0;
+    transform: translateX(-10px) scale(0.9);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    pointer-events: auto;
+}
+
+/* Bubble Pointer */
+.speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: 15px; /* Align with bottom-ish of bubble */
+    left: -10px; /* Pointing left towards logo */
+    width: 0;
+    height: 0;
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    border-right: 10px solid rgba(255, 255, 255, 0.95);
+    border-left: none;
+}
+
+/* Adjust bubble for right-side positions to pop to the left */
+#narrator-logo.pos-bottom-right .speech-bubble,
+#narrator-logo.pos-top-right .speech-bubble {
+    left: auto;
+    right: 100%;
+    margin-left: 0;
+    margin-right: 20px;
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 4px;
+    transform: translateX(10px) scale(0.9);
+}
+
+#narrator-logo.pos-bottom-right .speech-bubble::after,
+#narrator-logo.pos-top-right .speech-bubble::after {
+    left: auto;
+    right: -10px;
+    border-right: none;
+    border-left: 10px solid rgba(255, 255, 255, 0.95);
+}
+
+#narrator-logo.show-bubble .speech-bubble {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+}
+
+/* Bottom Video Wrapper (for closing scene) */
+.bottom-video-wrapper {
+    position: relative;
+    width: 80%;
+    max-width: 600px;
+    margin-top: 2rem;
+    z-index: 15;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.bottom-video-wrapper video {
+    width: 100%;
+    height: auto;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    opacity: 0;
+    transform: scale(0.95);
+    transition: all 1s ease 0.5s; /* Delay for staggered appearance */
+}
+
+section.active .bottom-video-wrapper video {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Closing Scene Logo */
+.closing-logo {
+    max-width: 180px !important; /* Smaller logo */
+    max-height: 110px !important; /* Limit height */
+    width: auto !important;
+    height: auto !important;
+    margin-bottom: 2rem; /* Space below logo */
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+/* QR Code */
+.qr-code {
+    max-width: 222px;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    position: absolute;
+    bottom: 44px;
+}
+
+/* Utilities */
+.hidden {
+    display: none !important;
+}
+
+/* Text Gradient Animation for Intro Zoom */
+section.layout-intro-zoom h2 {
+    color: #fff; /* Default white for "Meet" */
+}
+
+section.layout-intro-zoom h2 .highlight {
+    background: linear-gradient(90deg, #ffffff, #e6f2ff, #229ED9, #9b5de5, #e6f2ff, #ffffff);
+    background-size: 400% 100%;
+    background-position: 0% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block; /* Ensure transform/animation works nicely */
+}
+
+section.layout-intro-zoom.show-text h2 .highlight {
+    animation: gradientSweep 4s ease-in-out forwards;
+    animation-delay: 3.5s; /* Sync with bubble (8s - 4.5s = 3.5s) */
+}
+
+@keyframes gradientSweep {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 50% 50%; } /* Vibrant part */
+    100% { background-position: 0% 50%; } /* Back to start */
+}

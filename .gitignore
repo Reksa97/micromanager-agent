@@ -2,3 +2,4 @@
 .secret
 .playwright-mcp
 .secrets
+.DS_Store
