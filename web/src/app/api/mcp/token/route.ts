@@ -3,6 +3,7 @@ import { jwtVerify } from "jose";
 import { auth } from "@/auth";
 import { env } from "@/env";
 import { generateMcpToken } from "@/lib/mcp-auth";
+import { getGoogleAccessToken } from "@/lib/google-tokens";
 
 /**
  * POST /api/mcp/token
@@ -13,7 +14,6 @@ export async function POST(request: NextRequest) {
   // Try NextAuth session first
   const session = await auth();
   let userId = session?.user?.id;
-  const googleAccessToken = session?.googleAccessToken;
 
   // If no NextAuth session, check for Telegram JWT
   if (!userId) {
@@ -41,10 +41,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const mcpToken = await generateMcpToken(
-      userId,
-      googleAccessToken ?? undefined
-    );
+    const googleAccessToken = (await getGoogleAccessToken(userId)) ?? undefined;
+    const mcpToken = await generateMcpToken(userId, googleAccessToken);
 
     return NextResponse.json({
       token: mcpToken,
