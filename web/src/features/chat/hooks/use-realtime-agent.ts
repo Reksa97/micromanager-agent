@@ -126,7 +126,7 @@ export function useRealtimeAgent({
 
     try {
       await fetch(
-        "/api/conversation",
+        "/api/realtime/conversation",
         withAuth({
           method: "POST",
           headers: {
@@ -254,7 +254,7 @@ export function useRealtimeAgent({
       let mcpToken: string;
       try {
         const tokenResponse = await fetch(
-          "/api/mcp/token",
+          "/api/mcp/token/voice",
           withAuth({ method: "POST" })
         );
         if (!tokenResponse.ok) {

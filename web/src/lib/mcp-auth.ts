@@ -57,7 +57,21 @@ export interface McpTokenPayload {
   googleAccessToken?: string;
   scopes?: string[];
   workflowRunId?: string;
+  allowGoogleTokenLookup?: boolean;
   [key: string]: unknown;
+}
+
+export interface GenerateMcpTokenOptions {
+  /**
+   * Whether to embed the Google access token in the JWT.
+   * Disable for transports (e.g., voice realtime) that have strict header limits.
+   */
+  includeGoogleAccessToken?: boolean;
+  /**
+   * Whether the MCP server should attempt to fetch the Google token directly
+   * (using the userId) instead of relying on an embedded token.
+   */
+  allowGoogleTokenLookup?: boolean;
 }
 
 /**
@@ -87,16 +101,25 @@ export async function generateMcpToken(
   userId: string,
   googleAccessToken?: string,
   scopes?: readonly string[] | string[],
-  workflowRunId?: string
+  workflowRunId?: string,
+  options: GenerateMcpTokenOptions = {}
 ): Promise<string> {
+  const {
+    includeGoogleAccessToken = true,
+    allowGoogleTokenLookup = false,
+  } = options;
   const secret = env.JWT_SECRET;
 
   const payload: McpTokenPayload = {
     userId,
   };
 
-  if (googleAccessToken) {
+  if (includeGoogleAccessToken && googleAccessToken) {
     payload.googleAccessToken = googleAccessToken;
+  }
+
+  if (allowGoogleTokenLookup) {
+    payload.allowGoogleTokenLookup = true;
   }
 
   if (scopes && scopes.length > 0) {
@@ -125,9 +148,16 @@ export async function generateMcpToken(
 export async function generateMcpTokenWithScopeSet(
   userId: string,
   googleAccessToken: string | undefined,
-  scopeSet: keyof typeof MCP_SCOPE_SETS
+  scopeSet: keyof typeof MCP_SCOPE_SETS,
+  options?: GenerateMcpTokenOptions
 ): Promise<string> {
-  return generateMcpToken(userId, googleAccessToken, MCP_SCOPE_SETS[scopeSet]);
+  return generateMcpToken(
+    userId,
+    googleAccessToken,
+    MCP_SCOPE_SETS[scopeSet],
+    undefined,
+    options
+  );
 }
 
 /**
@@ -151,6 +181,7 @@ export async function verifyMcpToken(
       googleAccessToken: payload.googleAccessToken as string | undefined,
       scopes: Array.isArray(payload.scopes) ? payload.scopes as string[] : undefined,
       workflowRunId: payload.workflowRunId as string | undefined,
+      allowGoogleTokenLookup: payload.allowGoogleTokenLookup as boolean | undefined,
     };
   } catch (error) {
     console.error("MCP token verification failed:", error);
